@@ -44,19 +44,65 @@ Every integration is optional. Link the ones you use in Settings (gear icon).
 - A Secret Service keyring (gnome-keyring or KWallet) for storing tokens
 - A notification daemon (any modern desktop has one)
 
-To build from source you also need:
-
-- Node.js 20 (see `.nvmrc`)
-- Rust (stable, via [rustup](https://rustup.rs))
-- Tauri's Linux system packages. On Debian/Ubuntu:
-
-  ```bash
-  sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-  ```
-
-  For other distros, see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
-
 ## Install
+
+There are no prebuilt downloads yet, so you build the app from source. The
+first build takes several minutes. These steps are for Debian/Ubuntu; for other
+distros, see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+and install the equivalent packages.
+
+Run every step in a regular system terminal, not the terminal inside an editor
+installed as a snap or Flatpak (see [Troubleshooting](#troubleshooting)).
+
+### 1. System packages
+
+Refresh the package index first, otherwise apt may try to download versions
+that have been removed from the mirror and fail with `404 Not Found`:
+
+```bash
+sudo apt update
+```
+
+```bash
+sudo apt install build-essential curl wget file pkg-config libssl-dev libxdo-dev libdbus-1-dev libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+Check the output for `404` or `Unable to fetch`. If you see either, the install
+didn't finish. Then check that the libraries are visible:
+
+```bash
+pkg-config --modversion glib-2.0 gtk+-3.0 webkit2gtk-4.1 libsoup-3.0 javascriptcoregtk-4.1 dbus-1
+```
+
+This should print six version numbers and no errors.
+
+### 2. Rust
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Accept the default option (1), then load it into the current terminal (or open
+a new one) and check it:
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+```bash
+cargo --version
+```
+
+### 3. Node.js 20
+
+Any way of installing Node 20 works (the repo has an `.nvmrc`). With
+[nvm](https://github.com/nvm-sh/nvm):
+
+```bash
+nvm install 20
+```
+
+### 4. Build and install
 
 ```bash
 git clone https://github.com/IrakliSlivin/flight-deck.git
@@ -67,10 +113,31 @@ npx tauri build --no-bundle
 ```
 
 This installs `~/.local/bin/flight-deck` and a "Flight Deck" entry in your app
-menu (no sudo). To update, `git pull` and run the last two commands again.
+menu (no sudo). To update later, run `git pull`, `npm install`, then the last
+two commands again.
 
 If you'd rather have a package, `npm run tauri build` produces `.deb`, `.rpm`
 and `.AppImage` files in `src-tauri/target/release/bundle/`.
+
+### Troubleshooting
+
+| Error | Fix |
+|---|---|
+| apt: `Failed to fetch ... 404 Not Found` | The package index is out of date. Run `sudo apt update`, then the install again. If it still fails, the mirror may be mid-sync: wait and retry, or run `sudo apt clean && sudo apt update` first. |
+| `failed to run 'cargo metadata' ... No such file or directory` | Rust isn't installed, or this terminal doesn't have it on `PATH`. Do step 2, or run `source "$HOME/.cargo/env"`. |
+| `install-desktop.sh`: `Build first: npx tauri build --no-bundle` | The build in step 4 didn't finish. Scroll up to its first error. |
+| `The system library 'glib-2.0' (or 'dbus-1', 'gtk+-3.0', ...) required by crate ... was not found` | A `-dev` package is missing, usually because the step 1 install stopped early. Run step 1 again and check its output. The table below lists which package provides which library. |
+| The same "not found" error even though `pkg-config` finds the library in your terminal | The build is running somewhere that can't see system libraries. Usually that's the terminal of an editor installed as a snap or Flatpak (for example VS Code from the Snap Store). Build in a regular terminal. As a one-off workaround: `PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig npx tauri build --no-bundle`. |
+
+| Library in the error | Package |
+|---|---|
+| `glib-2.0` | `libglib2.0-dev` |
+| `gtk+-3.0`, `gdk-3.0` | `libgtk-3-dev` |
+| `dbus-1` | `libdbus-1-dev` |
+| `libsoup-3.0` | `libsoup-3.0-dev` |
+| `javascriptcoregtk-4.1` | `libjavascriptcoregtk-4.1-dev` |
+| `webkit2gtk-4.1` | `libwebkit2gtk-4.1-dev` |
+| `openssl` | `libssl-dev` |
 
 ## Setting up integrations
 
