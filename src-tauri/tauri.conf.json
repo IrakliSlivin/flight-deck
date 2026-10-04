@@ -26,6 +26,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Start-of-day dashboard for developers",
+    "longDescription": "Sprint tasks, pull requests, meetings, an AI mail brief, Claude usage and AI news in one window, with native meeting reminders.",
+    "homepage": "https://github.com/IrakliSlivin/flight-deck",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

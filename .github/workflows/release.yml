@@ -1,0 +1,77 @@
+# Builds the Linux .deb and .AppImage.
+# - Pushing a tag like v0.1.0 publishes a GitHub Release with both files, under fixed names
+#   so https://github.com/IrakliSlivin/flight-deck/releases/latest/download/<name> always
+#   points at the newest one. The tag must match "version" in src-tauri/tauri.conf.json.
+# - Running it by hand (Actions tab → Release → Run workflow) only builds, and keeps the
+#   files as a workflow artifact for testing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    # The oldest supported Ubuntu, so the .deb and AppImage also run on newer releases.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in src-tauri/tauri.conf.json"
+            exit 1
+          fi
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config patchelf libssl-dev libxdo-dev \
+            libdbus-1-dev libglib2.0-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Build
+        run: npx tauri build --bundles deb,appimage
+
+      - name: Collect files under fixed names
+        run: |
+          mkdir dist-release
+          cp src-tauri/target/release/bundle/deb/*.deb dist-release/flight-deck_amd64.deb
+          cp src-tauri/target/release/bundle/appimage/*.AppImage dist-release/flight-deck_amd64.AppImage
+          ls -la dist-release
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist-release/* \
+            --title "Flight Deck $GITHUB_REF_NAME" --generate-notes
+
+      - name: Keep the files as an artifact (manual runs)
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: flight-deck-linux
+          path: dist-release/

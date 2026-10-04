@@ -46,10 +46,59 @@ Every integration is optional. Link the ones you use in Settings (gear icon).
 
 ## Install
 
-There are no prebuilt downloads yet, so you build the app from source. The
-first build takes several minutes. These steps are for Debian/Ubuntu; for other
-distros, see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
-and install the equivalent packages.
+Download a prebuilt package from the
+[latest release](https://github.com/IrakliSlivin/flight-deck/releases/latest).
+There's nothing to compile.
+
+### Ubuntu / Debian
+
+```bash
+wget https://github.com/IrakliSlivin/flight-deck/releases/latest/download/flight-deck_amd64.deb
+```
+
+```bash
+sudo apt install ./flight-deck_amd64.deb
+```
+
+apt installs the libraries it needs. Then open **Flight Deck** from your app
+menu. To update, run the same two commands again. To uninstall:
+
+```bash
+sudo apt remove flight-deck
+```
+
+### Other distros (AppImage)
+
+```bash
+wget https://github.com/IrakliSlivin/flight-deck/releases/latest/download/flight-deck_amd64.AppImage
+```
+
+```bash
+chmod +x flight-deck_amd64.AppImage
+```
+
+```bash
+./flight-deck_amd64.AppImage
+```
+
+If it says FUSE is missing, install `libfuse2` (on Ubuntu 24.04 and newer:
+`libfuse2t64`).
+
+### Switching from a source install
+
+If you installed with `scripts/install-desktop.sh` before, remove that copy
+so the app menu doesn't show Flight Deck twice:
+
+```bash
+rm -f ~/.local/bin/flight-deck ~/.local/share/applications/flight-deck.desktop
+```
+
+## Build from source
+
+For contributors, or if you'd rather build it yourself. The first build takes
+several minutes. These steps are for Debian/Ubuntu; for other distros, see the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and install the
+equivalent packages.
 
 Run every step in a regular system terminal, not the terminal inside an editor
 installed as a snap or Flatpak (see [Troubleshooting](#troubleshooting)).

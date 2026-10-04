@@ -9,6 +9,7 @@ Personal desktop "start of day" dashboard for a developer (the user's nickname i
 - `npm run tauri dev` — full app (Vite dev server on port 1420, strict)
 - `npm run build` — `tsc` type-check + Vite build
 - `npm run tauri build` — packaged app
+- **Releases**: `.github/workflows/release.yml` builds the `.deb` and `.AppImage` on `ubuntu-22.04`. Pushing a tag `vX.Y.Z` (it must equal `version` in `tauri.conf.json`; bump `package.json` and `Cargo.toml` too) publishes a GitHub Release with fixed file names (`flight-deck_amd64.deb`, `flight-deck_amd64.AppImage`), which the README's `releases/latest/download/...` links depend on. A manual run (workflow_dispatch) only builds and uploads them as an artifact.
 - `npx tauri build --no-bundle && ./scripts/install-desktop.sh` — installs the release build into the user's GNOME app menu (`~/.local/bin/flight-deck` plus a `.desktop` entry and hicolor icons, no sudo)
 
 ## Branding
