@@ -5,9 +5,27 @@ import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
+// VITE_DEMO=1 swaps the Tauri APIs for in-browser mocks with made-up data (src/demo),
+// so the UI runs in a plain browser: README screenshots, UI work without tokens.
+const demo = process.env.VITE_DEMO === "1";
+const demoAlias = (pkg: string, file: string) => ({
+  find: new RegExp(`^${pkg}$`),
+  replacement: new URL(`./src/demo/${file}`, import.meta.url).pathname,
+});
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: demo
+      ? [
+          demoAlias("@tauri-apps/api/core", "core.ts"),
+          demoAlias("@tauri-apps/api/event", "event.ts"),
+          demoAlias("@tauri-apps/plugin-opener", "opener.ts"),
+          demoAlias("@tauri-apps/plugin-sql", "sql.ts"),
+        ]
+      : [],
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

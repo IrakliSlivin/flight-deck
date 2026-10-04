@@ -7,6 +7,21 @@ Claude usage limits and AI news, and it sends native reminders before meetings.
 Built with Tauri 2 (Rust) + React 19 + TypeScript + Vite + Tailwind. Linux is
 the main target (tested on GNOME).
 
+![Overview](docs/screenshots/overview.png)
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/pull-requests.png" alt="Pull Requests"></td>
+    <td><img src="docs/screenshots/ai-news.png" alt="AI News"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/command-palette.png" alt="Command palette"></td>
+    <td><img src="docs/screenshots/settings.png" alt="Settings"></td>
+  </tr>
+</table>
+
+<sub>Screenshots use the built-in demo mode with made-up data (see Development).</sub>
+
 ## Features
 
 - **Overview**: Claude weekly / 5-hour usage, stat tiles, next meeting with a
@@ -101,6 +116,18 @@ npm install
 npm run dev:app      # tauri dev with file polling (recommended)
 npm run build        # type-check + build the frontend
 ```
+
+### Demo mode
+
+```bash
+npm run demo         # http://localhost:1430
+```
+
+Runs the UI in a normal browser with made-up data and no tokens. `VITE_DEMO=1`
+points the `@tauri-apps/*` imports at mocks in `src/demo/`, so the app code is
+unchanged and real builds never include them. It's useful for UI work and for
+the screenshots in `docs/screenshots/`. Edit `src/demo/data.ts` to change what
+it shows.
 
 `dev:app` makes Vite poll for file changes instead of using inotify, which
 avoids `ENOSPC` crashes on machines with a low inotify watch limit. Plain

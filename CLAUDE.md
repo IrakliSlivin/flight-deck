@@ -5,6 +5,7 @@ Personal desktop "start of day" dashboard for a developer (the user's nickname i
 ## Running
 
 - `npm run dev:app` — **preferred dev loop**: `tauri dev` with `VITE_POLL=1`. Vite polls for file changes because this machine's inotify watch limit (65536) is usually exhausted, which makes plain `npm run tauri dev` crash with ENOSPC.
+- `npm run demo` — **demo mode**: the UI alone in a browser on port 1430 (launch config `demo`) with made-up data. `VITE_DEMO=1` makes `vite.config.ts` alias `@tauri-apps/api/core`, `api/event`, `plugin-opener` and `plugin-sql` to mocks in `src/demo/` (data in `src/demo/data.ts`, times relative to page load). A new Tauri command needs a handler in `src/demo/core.ts`, or demo mode throws "no mock". The README screenshots in `docs/screenshots/` come from it (1440x900 at 2x, dark).
 - `npm run tauri dev` — full app (Vite dev server on port 1420, strict)
 - `npm run build` — `tsc` type-check + Vite build
 - `npm run tauri build` — packaged app
