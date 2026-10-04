@@ -67,15 +67,6 @@ sudo apt update
 sudo apt install build-essential curl wget file pkg-config libssl-dev libxdo-dev libdbus-1-dev libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 
-Check the output for `404` or `Unable to fetch`. If you see either, the install
-didn't finish. Then check that the libraries are visible:
-
-```bash
-pkg-config --modversion glib-2.0 gtk+-3.0 webkit2gtk-4.1 libsoup-3.0 javascriptcoregtk-4.1 dbus-1
-```
-
-This should print six version numbers and no errors.
-
 ### 2. Rust
 
 ```bash
