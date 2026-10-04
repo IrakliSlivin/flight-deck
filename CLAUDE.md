@@ -75,4 +75,4 @@ Personal desktop "start of day" dashboard for a developer (the user's nickname i
 
 ## Status
 
-The project is not committed yet: all files are untracked on `master`, and there is no commit history.
+Hosted at https://github.com/IrakliSlivin/flight-deck (private for now, planned to go public; MIT licensed). The default branch is `main`. This repo's commits use the GitHub noreply email (`git config user.email` is set locally), so the work email doesn't end up in public history.
