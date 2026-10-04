@@ -65,7 +65,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       'In the App dropdown, select "Bitbucket" explicitly. Skipping this is the most common mistake — no scope checkboxes for Bitbucket will appear until you do.',
       "Check these three scopes: read:pullrequest:bitbucket, read:user:bitbucket, and read:repository:bitbucket (the last one lets repos be auto-discovered so you don't have to list them).",
       "Create the token and copy it immediately — it's shown only once. Tokens can't be edited after creation, so if you already made one without this scope, make a new one.",
-      "Enter the email you use to log into Bitbucket, the token, and your workspace slug(s) below (e.g. irakli_slivin — the part right after bitbucket.org/ in your repo URLs). Listing the workspace directly avoids needing yet another scope just to look up which workspaces you belong to.",
+      "Enter the email you use to log into Bitbucket, the token, and your workspace slug(s) below (e.g. acme — the part right after bitbucket.org/ in your repo URLs). Listing the workspace directly avoids needing yet another scope just to look up which workspaces you belong to.",
       'Bitbucket no longer has an API for "PRs awaiting my review" across all repos — leave "Repos to watch" blank to scan every repo in the workspace, or list specific slugs (e.g. evex_billing) to narrow it down.',
     ],
   },
