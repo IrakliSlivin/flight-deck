@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "outlook",
+  "description": "Outlook Web window: may only report the scraped inbox and hide itself",
+  "windows": [
+    "outlook"
+  ],
+  "remote": {
+    "urls": [
+      "https://outlook.office.com/*",
+      "https://outlook.office365.com/*",
+      "https://outlook.cloud.microsoft/*"
+    ]
+  },
+  "permissions": [
+    "allow-report-outlook-inbox",
+    "core:window:allow-hide"
+  ]
+}

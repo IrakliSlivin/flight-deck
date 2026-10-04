@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-read-claude-rate-limits"
+description = "Enables the read_claude_rate_limits command without any pre-configured scope."
+commands.allow = ["read_claude_rate_limits"]
+
+[[permission]]
+identifier = "deny-read-claude-rate-limits"
+description = "Denies the read_claude_rate_limits command without any pre-configured scope."
+commands.deny = ["read_claude_rate_limits"]

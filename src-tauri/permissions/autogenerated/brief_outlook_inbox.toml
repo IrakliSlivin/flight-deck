@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-brief-outlook-inbox"
+description = "Enables the brief_outlook_inbox command without any pre-configured scope."
+commands.allow = ["brief_outlook_inbox"]
+
+[[permission]]
+identifier = "deny-brief-outlook-inbox"
+description = "Denies the brief_outlook_inbox command without any pre-configured scope."
+commands.deny = ["brief_outlook_inbox"]

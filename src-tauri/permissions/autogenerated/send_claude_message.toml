@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-send-claude-message"
+description = "Enables the send_claude_message command without any pre-configured scope."
+commands.allow = ["send_claude_message"]
+
+[[permission]]
+identifier = "deny-send-claude-message"
+description = "Denies the send_claude_message command without any pre-configured scope."
+commands.deny = ["send_claude_message"]

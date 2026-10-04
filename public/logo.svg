@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#262626"/>
+      <stop offset="1" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.55">
+      <stop offset="0" stop-color="#f59e0b" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="wing" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fef3c7" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#fde68a" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="228" fill="url(#glow)"/>
+
+  <!-- speed streaks -->
+  <g stroke="#f59e0b" stroke-linecap="round" opacity="0.55">
+    <line x1="170" y1="760" x2="330" y2="600" stroke-width="22"/>
+    <line x1="250" y1="850" x2="370" y2="730" stroke-width="16" opacity="0.7"/>
+    <line x1="120" y1="640" x2="220" y2="540" stroke-width="12" opacity="0.5"/>
+  </g>
+
+  <g transform="translate(560 470) rotate(40) scale(0.95)">
+    <!-- legs -->
+    <g fill="none" stroke="#b45309" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M-70 -120 L-150 -170 L-175 -250"/>
+      <path d="M70 -120 L150 -170 L175 -250"/>
+      <path d="M-85 -70 L-190 -60 L-240 -10"/>
+      <path d="M85 -70 L190 -60 L240 -10"/>
+      <path d="M-70 -20 L-150 60 L-165 160"/>
+      <path d="M70 -20 L150 60 L165 160"/>
+    </g>
+
+    <!-- abdomen -->
+    <ellipse cx="0" cy="110" rx="78" ry="135" fill="#92400e"/>
+    <g stroke="#78350f" stroke-width="10" fill="none" opacity="0.8">
+      <path d="M-70 60 Q0 85 70 60"/>
+      <path d="M-74 120 Q0 145 74 120"/>
+      <path d="M-62 180 Q0 205 62 180"/>
+    </g>
+
+    <!-- scissor-folded wings (the tsetse signature) -->
+    <g stroke="#fbbf24" stroke-width="6" stroke-linejoin="round">
+      <path d="M-30 -70 C 80 -40 110 230 40 360 C -10 330 -60 80 -30 -70 Z" fill="url(#wing)"/>
+      <path d="M30 -70 C -80 -40 -110 230 -40 360 C 10 330 60 80 30 -70 Z" fill="url(#wing)"/>
+    </g>
+    <!-- hatchet-cell veins -->
+    <g stroke="#b45309" stroke-width="7" fill="none" stroke-linecap="round" opacity="0.85">
+      <path d="M-10 0 L40 60 L45 170 L35 290"/>
+      <path d="M10 0 L-40 60 L-45 170 L-35 290"/>
+      <path d="M40 60 L65 110"/>
+      <path d="M-40 60 L-65 110"/>
+    </g>
+
+    <!-- thorax -->
+    <ellipse cx="0" cy="-95" rx="95" ry="92" fill="url(#body)"/>
+    <path d="M-40 -150 L-25 -45 M40 -150 L25 -45" stroke="#b45309" stroke-width="10" stroke-linecap="round"/>
+
+    <!-- head -->
+    <ellipse cx="0" cy="-215" rx="72" ry="48" fill="url(#body)"/>
+    <ellipse cx="-52" cy="-222" rx="38" ry="44" fill="#7c2d12"/>
+    <ellipse cx="52" cy="-222" rx="38" ry="44" fill="#7c2d12"/>
+    <ellipse cx="-62" cy="-236" rx="11" ry="13" fill="#fde68a" opacity="0.8"/>
+    <ellipse cx="42" cy="-236" rx="11" ry="13" fill="#fde68a" opacity="0.8"/>
+
+    <!-- proboscis -->
+    <line x1="0" y1="-260" x2="0" y2="-390" stroke="#fbbf24" stroke-width="14" stroke-linecap="round"/>
+  </g>
+</svg>

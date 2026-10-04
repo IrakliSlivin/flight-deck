@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-report-outlook-inbox"
+description = "Enables the report_outlook_inbox command without any pre-configured scope."
+commands.allow = ["report_outlook_inbox"]
+
+[[permission]]
+identifier = "deny-report-outlook-inbox"
+description = "Denies the report_outlook_inbox command without any pre-configured scope."
+commands.deny = ["report_outlook_inbox"]

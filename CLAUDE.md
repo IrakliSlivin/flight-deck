@@ -1,0 +1,78 @@
+# Flight Deck
+
+Personal desktop "start of day" dashboard for a developer (the user's nickname is "tsetse fly"; the logo is a stylized tsetse fly). Formerly "Daily Dashboard". Built with Tauri 2 (Rust backend) + React 19 + TypeScript + Vite 8 + Tailwind 4. Linux is the main target (Node version in `.nvmrc` is 20).
+
+## Running
+
+- `npm run dev:app` — **preferred dev loop**: `tauri dev` with `VITE_POLL=1`. Vite polls for file changes because this machine's inotify watch limit (65536) is usually exhausted, which makes plain `npm run tauri dev` crash with ENOSPC.
+- `npm run tauri dev` — full app (Vite dev server on port 1420, strict)
+- `npm run build` — `tsc` type-check + Vite build
+- `npm run tauri build` — packaged app
+- `npx tauri build --no-bundle && ./scripts/install-desktop.sh` — installs the release build into the user's GNOME app menu (`~/.local/bin/flight-deck` plus a `.desktop` entry and hicolor icons, no sudo)
+
+## Branding
+
+- The logo source is `assets/logo.svg`, copied to `public/logo.svg` for the favicon and the TopBar.
+- To regenerate the app icons in `src-tauri/icons`, run `npx tauri icon assets/logo.svg`, then delete the `android/` and `ios/` folders it creates.
+- The Tauri identifier and the keyring service are intentionally still `com.ubumtu.daily-dashboard`. Changing them would orphan the saved credentials and the SQLite data directory.
+
+## Desktop behavior (`src-tauri/src/lib.rs`)
+
+- No tray icon (removed at the user's request; the `tray-icon` feature is off). Closing the main window quits the app (an explicit `exit`, since the hidden Outlook window would otherwise keep the process alive), so reminders and mail notifications only run while it is open. **Ctrl+Q** or "Quit Flight Deck" in the command palette (`quit_app`) also quit; Ctrl+Shift+Space only hides it.
+- Release builds use `tauri-plugin-single-instance`: launching again from the app menu shows the running window. It is left out of debug builds because `tauri dev` shares the identifier and would exit while the installed build runs.
+- Global shortcut **Ctrl+Shift+Space** toggles the window. If another instance (for example `tauri dev`) already holds it, registration fails without stopping the app. Showing the window also emits `open-palette`.
+- **Ctrl/Cmd+K** in the app opens the `CommandPalette`.
+- Uses the autostart, opener, global-shortcut, sql and (release only) single-instance plugins.
+- **Meeting reminders** (`reminders.rs`): a background thread re-reads the calendar feed every 5 min (via `calendar::load_meetings`) and sends native notifications (`notify-rust`, D-Bus) a configurable lead time (default 5 min) before each timed, non-FREE meeting (no notification at the start). It has a Join button (opens the meeting link) and a default action that shows the main window. It works while the window is hidden (not after it is closed). Preferences (meeting sound and email sound, each on/off plus which one, defaults Bell and Chime; lead time 1–60 min) come from `get_reminder_settings`/`set_reminder_settings`, are stored in `reminder_settings.json` in the app data dir, are edited in the "Notifications" section at the top of the Settings drawer, and are re-read every tick.
+- **Notifications** (`notifications.rs`): shared by reminders and new mail. Sounds `chime` (email default), `bell` (meeting default) and `blip` are synthesized by `scripts/gen-sounds.py` into `src-tauri/sounds/*.oga`; they are embedded in the binary and written to `<app data>/sounds/` for GNOME's `sound-file` hint (re-run the script to tweak them); Settings has a Test preview (`preview_notification_sound`). GNOME popups are `transient` (not kept in GNOME's list), labelled with a `mail-unread` / `appointment-soon` icon. Every notification also goes into an in-memory feed (`get_notification_feed`, `notification-feed` event, last 50) shown by `NotificationBell` in the TopBar: Email/Meeting tag, time, hover × (`dismiss_notification`), Clear all (`clear_notifications`, also in the command palette); clicking an item opens the email in Outlook or the meeting's join link. Dismissing also closes the popup via D-Bus `CloseNotification` if it is still up. The feed is lost when the app quits.
+- On Linux `main.rs` always sets `GDK_BACKEND=x11` (XWayland), overriding an inherited value (Claude desktop passes `GDK_BACKEND=wayland` to its terminals); `FLIGHT_DECK_WAYLAND=1` opts out. On native Wayland the Outlook window's title-bar X only worked intermittently, and the Outlook warm-up needs X11.
+
+## Architecture
+
+- **All external HTTP happens in Rust**, one `#[tauri::command]` module per integration. The frontend calls these through thin `invoke` wrappers in `src/lib/*.ts`.
+- **Secrets are stored in the OS keyring** (`keyring` crate, service `com.ubumtu.daily-dashboard`). They are handled in `credentials.rs`. The UI only writes secrets. It reads back only fields marked `secret: false` (email, workspace, repo slugs).
+- **Command permissions**: `build.rs` declares every command in an app manifest, so each needs an `allow-<command>` permission. `capabilities/default.json` grants them to `main`; `capabilities/outlook.json` gives the remote Outlook window only `allow-report-outlook-inbox` and `core:window:allow-hide` (its Ctrl+W, since the title-bar X is unreliable on Wayland). A new command must be added to `build.rs` and `default.json`.
+- **Local data** is SQLite `dashboard.db` via `tauri-plugin-sql`. Migrations live in `lib.rs` and the frontend queries it in `src/lib/db.ts`. Tables are `todos` and `quick_links`; `quick_links` is not used by the UI yet.
+
+| Rust module | Command(s) | Source / credentials |
+|---|---|---|
+| `clickup.rs` | `fetch_clickup_tasks`, `fetch_clickup_list_statuses`, `update_clickup_task_status` | ClickUp API: `clickup.api_token`, `clickup.space_name`. Per-List statuses are cached for 7 days in `clickup_status_cache.json` (app data dir); a failed update drops that List from the cache. The status pill in `TaskList` opens a picker. `TaskList` groups tasks by status under small headers: in progress first, then review/QA, blocked, on hold, ready, then the rest |
+| `bitbucket.rs` | `fetch_bitbucket_prs` | Bitbucket API: `bitbucket.email`, `.api_token`, `.workspace`, `.repos` |
+| `gitlab.rs` | `fetch_gitlab_prs` | GitLab REST v4 (`PRIVATE-TOKEN`, scope `read_api`): `gitlab.api_token`, optional `gitlab.base_url` (default gitlab.com). Your user id (`GET /user`) is cached for 24h in `gitlab_user_cache.json` (app data dir), keyed by base URL + a token hash. Authored = `scope=created_by_me`; reviewing = `reviewer_id=<me>`, minus drafts and MRs you approved. One `/approvals` request per MR. Returns the Bitbucket PR shape; `src/lib/prs.ts` (`fetchAllPrs`) merges every linked source (tagged `provider`), so one failing source doesn't hide the other. The Overview tile and the PRs tab share it through `loadPrs(force)`: an in-progress fetch is joined and a result under 5 min old is reused on mount; the refresh buttons force a new fetch |
+| `calendar.rs` | `fetch_meetings` | Outlook published ICS feed (`outlook.calendar_ics_url`). Uses its own minimal iCal parser and returns 2 days of meetings |
+| `outlook.rs` | `report_outlook_inbox`, `get_outlook_inbox`, `open_outlook`, `refresh_outlook` ("Fill brief": rescrape without showing the window, or show it when on the sign-in page) | No API (Graph is disabled by the org). A hidden `outlook` window loads Outlook Web with the user's normal login; `outlook_scrape.js` (initialization script) scrapes the inbox DOM (`data-convid` rows, "Unread" aria-labels, fields read around each row's date-titled time span, the Inbox tree item) and reports it. Closing that window (or Ctrl+W) hides it; F5 or a floating reload button (bottom-right) reloads it (the webview has no reload shortcut; Ctrl+R is left to Outlook as Reply). Outlook only builds its message list in a window that has been on screen, so `warm_up` shows it invisibly (GTK opacity 0, click-through, always-on-bottom, no taskbar/focus; needs X11) until the first report with messages or 90s, then hides it (keep-below is cleared *before* hiding; cleared after, the WM keeps it and the window reopens stuck under everything). New unread mail triggers a native notification (clicking opens that message; more than 3 at once become one summary; the first report after startup is only the baseline; sound is the separate Email sound setting, default Chime). Depends on Outlook's markup |
+| `news.rs` | `fetch_ai_news` | Hard-coded list of AI RSS/Atom feeds, fetched in parallel |
+| `claude.rs` | `send_claude_message` | Anthropic Messages API, model `claude-sonnet-5`, key `anthropic.api_key`. `complete()` is the request helper: extra body fields (system, output_config) are merged in, and refusal/max_tokens stops are returned as errors |
+| `usage.rs` | `compute_claude_usage`, `read_claude_rate_limits` | Parses `~/.claude/projects` JSONL files (30-day token and cost stats). Rate limits come live from `api.anthropic.com/api/oauth/usage` (covers desktop app + claude.ai too) using Claude Code's OAuth token in `~/.claude/.credentials.json`, at most every 20 min. It never refreshes that token (would log the CLI out), so once it expires it falls back to `~/.claude/rate-limits.json` (written by `~/.claude/statusline-dashboard.sh` and by each live fetch) |
+
+## Frontend (`src/`)
+
+- Design language: "mission control" dark navy.
+  - `Starfield.tsx` is a full-window canvas behind everything: twinkling stars, a galaxy swirl, and constellation lines near the cursor. The swirl is fixed to the window at 75.5% across and 66% down, the gap between Sync calendar and Intel brief on Overview at the top of the page. It does not follow scrolling or layout changes. It draws at 30 fps and only while the window has focus (unfocused, the last frame stays as a still backdrop); at 60 fps nonstop it kept the main web process at ~100% CPU all day.
+  - Surfaces: `paper` (frosted light, used for the hero numbers) and `glass` (dark translucent), defined in `index.css` under `@layer components` so Tailwind utilities can override them.
+  - Headings use the letter-spaced mono `.label`. The accent color is amber.
+  - Animations: `rise` (staggered entrance, via `Card`'s `delay` prop), `status-dot` pulse, `shimmer`, `spark`, `useCountUp` for numbers, and the pointer glow on `.action-btn`.
+- `App.tsx` is the shell: `Starfield` + `TopBar` + active tab + `CommandPalette` + `SettingsDrawer`.
+- `tabs/index.tsx` is the tab registry (`TABS`, `TabId`). Each tab's `render(ctx)` receives a `TabContext` (`navigate`, `openSettings`, `openPalette`).
+  - Tabs: **Overview** (`Today.tsx`), **Pull Requests**, **AI News**.
+  - `Claude.tsx` (chat) and `Usage.tsx` (usage stats) exist but are **not registered**.
+- **Settings is not a tab.** It is a slide-over drawer (`components/SettingsDrawer.tsx`, which also defines `INTEGRATIONS` and `REQUIRED_KEY`).
+  - Open it with the gear button, the "N/4 linked" pill, Ctrl+, or the command palette.
+  - `TopBar` counts how many integrations are linked via `hasCredential`.
+- Overview layout, top to bottom:
+  - `UsageHero`: Claude weekly and 5-hour %, each with a ruler bar and reset time
+  - 4 `StatTile`s
+  - side by side: `NextUpCard` (next or in-progress meeting with a countdown) and `InboxCard` ("Mail brief"): shows only the AI brief of the unread Outlook mail (no raw message list, no Fill brief button; `fillMailBrief` is still used by the Intel brief action). The brief runs once on app open (`briefOnOpen`: waits for the first Outlook report with unread mail, up to 3 min, without forcing a rescrape), and on demand: the "✦ AI brief" button, or the "Intel brief" and "Refresh all" actions, which rescrape Outlook (`fillMailBrief`) and then rewrite the brief. Its state lives in `src/lib/mailBrief.ts` (`runMailBrief`, `useMailBrief`; concurrent runs are joined). `brief_outlook_inbox` (`brief_outlook_inbox`) pipes the unread messages from the last scrape to the Claude Code CLI (`claude -p --model sonnet --json-schema …`, found at `~/.local/bin/claude` or on PATH; runs on the Claude Code login, no API key; no tools, MCP or settings, cwd = temp dir) and reads `structured_output`. It shows a headline plus one point per item, which opens that email in the Outlook window when clicked (needs-reply first). The brief is kept across tab switches (lost when the app quits) and flagged "inbox changed" when the unread set differs
+  - `ActionGrid`: one row of 5 buttons (Refresh all, Sprint tasks, Pull PRs, Sync calendar, Intel brief = rescrape Outlook + regenerate the AI mail brief)
+  - a glass panel with Today (`Schedule`), Tasks (`TaskList`, ClickUp) and Notes & Todo (`TodoList`, SQLite)
+  - Morning headlines (`Headlines`)
+  - `AtlasCard`
+- `Today.tsx` fetches through a small `useRemote` hook.
+- **Ops Atlas**: `public/atlas/index.html` is a bundled copy of the user's claude.ai artifact "Claude Ops Atlas" (an interactive canvas graph of the evex_billing `.claude` setup). `AtlasCard` shows it in an iframe, with an Expand option for full screen.
+  - The copy has a small override `<style>` (forced dark theme, transparent background, `color-scheme: dark`). Without `color-scheme: dark` the iframe paints white.
+  - The copy also has perf patches in its script: the font and RGB values are cached, glow sprites are pre-rendered per type, node alpha and the focus set are computed once per frame, and the loop pauses when the graph is off-screen (IntersectionObserver), the window is hidden, or the app window is unfocused (`window.top.document.hasFocus()`). The override block also turns off `backdrop-filter` on the legend and drawer.
+  - To update it, re-read the artifact, then re-apply the override block and the perf patches.
+
+## Status
+
+The project is not committed yet: all files are untracked on `master`, and there is no commit history.

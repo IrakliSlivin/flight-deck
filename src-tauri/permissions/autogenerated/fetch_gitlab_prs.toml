@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-gitlab-prs"
+description = "Enables the fetch_gitlab_prs command without any pre-configured scope."
+commands.allow = ["fetch_gitlab_prs"]
+
+[[permission]]
+identifier = "deny-fetch-gitlab-prs"
+description = "Denies the fetch_gitlab_prs command without any pre-configured scope."
+commands.deny = ["fetch_gitlab_prs"]

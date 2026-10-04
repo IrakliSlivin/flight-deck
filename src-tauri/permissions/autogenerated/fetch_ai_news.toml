@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-ai-news"
+description = "Enables the fetch_ai_news command without any pre-configured scope."
+commands.allow = ["fetch_ai_news"]
+
+[[permission]]
+identifier = "deny-fetch-ai-news"
+description = "Denies the fetch_ai_news command without any pre-configured scope."
+commands.deny = ["fetch_ai_news"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-bitbucket-prs"
+description = "Enables the fetch_bitbucket_prs command without any pre-configured scope."
+commands.allow = ["fetch_bitbucket_prs"]
+
+[[permission]]
+identifier = "deny-fetch-bitbucket-prs"
+description = "Denies the fetch_bitbucket_prs command without any pre-configured scope."
+commands.deny = ["fetch_bitbucket_prs"]

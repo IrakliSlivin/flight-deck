@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-compute-claude-usage"
+description = "Enables the compute_claude_usage command without any pre-configured scope."
+commands.allow = ["compute_claude_usage"]
+
+[[permission]]
+identifier = "deny-compute-claude-usage"
+description = "Denies the compute_claude_usage command without any pre-configured scope."
+commands.deny = ["compute_claude_usage"]

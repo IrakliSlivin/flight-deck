@@ -1,0 +1,1123 @@
+<!doctype html><html data-theme="dark"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>evex_billing · Claude Ops Atlas</title>
+<style>
+  :root{
+    --ink:#0c121c; --ink-2:#121b28; --ink-3:#1a2536;
+    --paper:#eef1ee; --paper-2:#e1e8e1; --paper-3:#d2dbd2;
+    --hairline-dark: rgba(255,255,255,.09);
+    --hairline-light: rgba(10,20,15,.12);
+    --bg:var(--ink); --panel:var(--ink-2); --panel-2:var(--ink-3); --hairline:var(--hairline-dark);
+    --text:#dbe4e8; --text-dim:#8a97a3; --text-faint:#556170;
+    --accent:#4fd1c5; --accent-strong:#8ff0e6;
+    --c-core:#4fd1c5; --c-context:#b48ce0; --c-layer:#e08fc0; --c-agent:#6f9ceb; --c-skill:#e0a63f; --c-repo:#e0785a; --c-tool:#7ec98f;
+    --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --font-sans: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:var(--paper); --panel:var(--paper-2); --panel-2:var(--paper-3); --hairline:var(--hairline-light);
+      --text:#182420; --text-dim:#54655c; --text-faint:#8a9a91;
+      --accent:#0e8377; --accent-strong:#0a5f56;
+      --c-core:#0e8377; --c-context:#7a4fb0; --c-layer:#a02a6b; --c-agent:#2f5aa0; --c-skill:#9c6c14; --c-repo:#b8481f; --c-tool:#2c7a45;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:var(--ink); --panel:var(--ink-2); --panel-2:var(--ink-3); --hairline:var(--hairline-dark);
+    --text:#dbe4e8; --text-dim:#8a97a3; --text-faint:#556170;
+    --accent:#4fd1c5; --accent-strong:#8ff0e6;
+    --c-core:#4fd1c5; --c-context:#b48ce0; --c-layer:#e08fc0; --c-agent:#6f9ceb; --c-skill:#e0a63f; --c-repo:#e0785a; --c-tool:#7ec98f;
+  }
+  :root[data-theme="light"]{
+    --bg:var(--paper); --panel:var(--paper-2); --panel-2:var(--paper-3); --hairline:var(--hairline-light);
+    --text:#182420; --text-dim:#54655c; --text-faint:#8a9a91;
+    --accent:#0e8377; --accent-strong:#0a5f56;
+    --c-core:#0e8377; --c-context:#7a4fb0; --c-agent:#2f5aa0; --c-skill:#9c6c14; --c-repo:#b8481f; --c-tool:#2c7a45;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; margin:0; }
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--font-sans);
+    overflow:hidden;
+  }
+  ::selection{ background:var(--accent); color:var(--ink); }
+
+  .app{ display:flex; flex-direction:column; height:100vh; width:100vw; }
+
+  /* ---------- header ---------- */
+  header.topbar{
+    flex:0 0 auto; display:flex; align-items:center; gap:1.4rem;
+    padding:.8rem 1.2rem; border-bottom:1px solid var(--hairline);
+    z-index:20; background:color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter:blur(8px);
+  }
+  .brand{ display:flex; align-items:center; gap:.65rem; min-width:0; }
+  .brand-mark{
+    flex:0 0 auto; width:30px; height:30px; border-radius:50%;
+    display:grid; place-items:center; font-family:var(--font-mono); font-size:.8rem;
+    color:var(--accent); border:1px solid var(--hairline);
+    box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .brand-text h1{
+    font-family:var(--font-mono); font-size:.82rem; letter-spacing:.06em; font-weight:600;
+    margin:0; text-transform:uppercase; text-wrap:balance;
+  }
+  .brand-text p{ margin:.15rem 0 0; font-size:.72rem; color:var(--text-dim); }
+
+  .stats{
+    display:flex; gap:1.1rem; font-family:var(--font-mono); font-size:.72rem; color:var(--text-dim);
+    font-variant-numeric: tabular-nums; flex:0 0 auto;
+  }
+  .stats b{ color:var(--text); font-weight:600; }
+
+  .search{ margin-left:auto; flex:0 1 240px; position:relative; }
+  .search input{
+    width:100%; background:var(--panel); border:1px solid var(--hairline); color:var(--text);
+    border-radius:999px; padding:.5rem .9rem .5rem 2rem; font-size:.78rem; font-family:var(--font-sans);
+    outline:none; transition:border-color .15s;
+  }
+  .search input:focus-visible{ border-color:var(--accent); }
+  .search::before{
+    content:"⌕"; position:absolute; left:.7rem; top:50%; transform:translateY(-50%);
+    color:var(--text-faint); font-size:.85rem;
+  }
+  .themebtn{
+    flex:0 0 auto; background:var(--panel); border:1px solid var(--hairline); color:var(--text-dim);
+    border-radius:999px; padding:.5rem .8rem; font-size:.72rem; font-family:var(--font-mono);
+    cursor:pointer; letter-spacing:.04em;
+  }
+  .themebtn:hover{ color:var(--text); border-color:var(--accent); }
+  .themebtn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ---------- stage ---------- */
+  main.stage{ position:relative; flex:1 1 auto; overflow:hidden; }
+  canvas#graph{ position:absolute; inset:0; display:block; cursor:default; }
+
+  aside.legend{
+    position:absolute; left:1rem; top:1rem; z-index:10; width:200px;
+    background:color-mix(in srgb, var(--panel) 92%, transparent); border:1px solid var(--hairline);
+    border-radius:var(--radius); padding:.7rem .75rem; backdrop-filter:blur(6px);
+  }
+  .legend h2{
+    margin:0 0 .5rem; font-size:.65rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--text-faint); font-family:var(--font-mono); font-weight:600;
+  }
+  .legend-row{
+    display:flex; align-items:center; gap:.5rem; width:100%; background:none; border:none;
+    padding:.32rem .3rem; border-radius:6px; cursor:pointer; color:var(--text); text-align:left;
+    font-family:var(--font-sans); font-size:.76rem; transition:background .12s, opacity .12s;
+  }
+  .legend-row:hover{ background:var(--panel-2); }
+  .legend-row:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .legend-row.inactive{ opacity:.35; }
+  .legend-dot{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 6px 1px currentColor; }
+  .legend-row .lname{ flex:1 1 auto; }
+  .legend-row .lcount{ font-family:var(--font-mono); font-size:.68rem; color:var(--text-faint); font-variant-numeric:tabular-nums; }
+  .legend-reset{
+    margin-top:.4rem; width:100%; text-align:center; font-family:var(--font-mono); font-size:.65rem;
+    letter-spacing:.06em; background:none; border:1px dashed var(--hairline); color:var(--text-faint);
+    border-radius:6px; padding:.3rem; cursor:pointer;
+  }
+  .legend-reset:hover{ color:var(--text); border-color:var(--text-faint); }
+
+  p.hint{
+    position:absolute; left:1rem; bottom:.9rem; z-index:10; margin:0;
+    font-family:var(--font-mono); font-size:.66rem; letter-spacing:.03em; color:var(--text-faint);
+    pointer-events:none;
+  }
+
+  .tooltip{
+    position:absolute; z-index:15; pointer-events:none; transform:translate(-50%,-130%);
+    background:var(--panel-2); border:1px solid var(--hairline); border-radius:6px;
+    padding:.3rem .55rem; font-family:var(--font-mono); font-size:.7rem; color:var(--text);
+    white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.25);
+  }
+
+  /* ---------- drawer ---------- */
+  aside.drawer{
+    position:absolute; right:0; top:0; bottom:0; width:min(360px, 88vw); z-index:12;
+    background:color-mix(in srgb, var(--panel) 96%, transparent); border-left:1px solid var(--hairline);
+    backdrop-filter:blur(10px); transform:translateX(100%); transition:transform .32s cubic-bezier(.2,.8,.2,1);
+    padding:1.1rem 1.15rem; overflow-y:auto;
+  }
+  aside.drawer.open{ transform:translateX(0); }
+  .drawer-close{
+    position:absolute; top:.7rem; right:.7rem; width:28px; height:28px; border-radius:50%;
+    background:none; border:1px solid var(--hairline); color:var(--text-dim); font-size:1rem;
+    cursor:pointer; line-height:1;
+  }
+  .drawer-close:hover{ color:var(--text); border-color:var(--accent); }
+  .pill{
+    display:inline-flex; align-items:center; gap:.4rem; font-family:var(--font-mono); font-size:.62rem;
+    letter-spacing:.08em; text-transform:uppercase; padding:.25rem .55rem; border-radius:999px;
+    border:1px solid currentColor;
+  }
+  .pill .dot{ width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .drawer h3{
+    font-family:var(--font-mono); font-size:1.02rem; margin:.65rem 0 .2rem; text-wrap:balance;
+    letter-spacing:.01em;
+  }
+  .drawer .meta{ font-size:.72rem; color:var(--text-faint); font-family:var(--font-mono); margin-bottom:.7rem; }
+  .drawer p.desc{ font-size:.86rem; line-height:1.55; color:var(--text); margin:0 0 1rem; max-width:65ch; }
+  .drawer h4{
+    font-size:.65rem; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint);
+    font-family:var(--font-mono); margin:0 0 .5rem; font-weight:600;
+  }
+  .chiplist{ display:flex; flex-wrap:wrap; gap:.4rem; }
+  .chip{
+    font-family:var(--font-mono); font-size:.68rem; padding:.28rem .55rem; border-radius:6px;
+    background:var(--panel-2); border:1px solid var(--hairline); color:var(--text); cursor:pointer;
+    transition:border-color .12s, transform .12s;
+  }
+  .chip:hover{ border-color:var(--accent); transform:translateY(-1px); }
+
+  ::-webkit-scrollbar{ width:9px; }
+  ::-webkit-scrollbar-thumb{ background:var(--panel-2); border-radius:6px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+
+  @media (max-width: 720px){
+    aside.legend{ width:150px; font-size:.9em; }
+    .stats{ display:none; }
+    .brand-text p{ display:none; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    aside.drawer{ transition:none; }
+  }
+</style>
+
+<style>
+  /* Flight Deck embed overrides */
+  :root{color-scheme:dark!important}
+  html,body{background:transparent!important}
+  :root[data-theme="dark"]{--ink-2:rgba(15,23,42,.72);--ink-3:rgba(30,41,59,.8);--panel:var(--ink-2);--panel-2:var(--ink-3)}
+  header.topbar{background:transparent!important;backdrop-filter:none!important}
+  .themebtn{display:none}
+  /* Perf: backdrop-filter over the animated canvas is re-blurred every frame */
+  aside.legend,aside.drawer{backdrop-filter:none!important}
+  aside.legend{background:rgba(12,18,32,.9)!important}
+  aside.drawer{background:rgba(12,18,32,.96)!important}
+</style>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◎</span>
+      <div class="brand-text">
+        <h1>evex_billing · Claude Ops Atlas</h1>
+        <p>Every agent, skill, context &amp; sibling system this setup can reach — mapped live.</p>
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="search">
+      <input id="search" type="text" placeholder="search nodes…" autocomplete="off" spellcheck="false" />
+    </div>
+    <button class="themebtn" id="themeBtn" type="button" title="Cycle theme">AUTO</button>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="graph"></canvas>
+    <aside class="legend" id="legend">
+      <h2>Node types</h2>
+      <div id="legendRows"></div>
+      <button class="legend-reset" id="legendReset" type="button">show all</button>
+    </aside>
+    <div class="tooltip" id="tooltip" hidden></div>
+    <p class="hint">drag a node · click to inspect · hover to trace a path · click a legend chip to isolate</p>
+  </main>
+
+  <aside class="drawer" id="drawer">
+    <button class="drawer-close" id="drawerClose" type="button" aria-label="Close">×</button>
+    <div id="drawerBody"></div>
+  </aside>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     DATA — the actual .claude/ setup for evex_billing
+     ============================================================ */
+
+  var TYPES = {
+    core:    { label:"Core",    varName:"--c-core",    r:22, always:true  },
+    context: { label:"Context", varName:"--c-context", r:13, always:true  },
+    layer:   { label:"Layer",   varName:"--c-layer",   r:15, always:true  },
+    agent:   { label:"Agent",   varName:"--c-agent",   r:9,  always:true  },
+    skill:   { label:"Skill",   varName:"--c-skill",   r:5.5,always:false },
+    repo:    { label:"Repo",    varName:"--c-repo",    r:11, always:true  },
+    tool:    { label:"Tool",    varName:"--c-tool",    r:10, always:true  }
+  };
+
+  var RING_BY_TYPE = { core:0, context:130, layer:165, repo:172, tool:172, agent:216, skill:270 };
+
+  var SECTORS = [
+    { key:"se",      label:"SOFTWARE ENGINEERING" },
+    { key:"doc",     label:"DOCUMENTATION" },
+    { key:"pm",      label:"PROJECT MANAGEMENT" },
+    { key:"tools",   label:"TOOLS" },
+    { key:"onb",     label:"ONBOARDING" },
+    { key:"repos",   label:"SIBLING SYSTEMS" },
+    { key:"pskills", label:"PLATFORM SKILLS" },
+    { key:"pagents", label:"PLATFORM AGENTS" }
+  ];
+
+  function n(id, label, type, sector, desc, extra){
+    var o = { id:id, label:label, type:type, sector:sector, desc:desc };
+    if (extra) for (var k in extra) o[k] = extra[k];
+    return o;
+  }
+
+  var NODES = [
+    n("core", "evex_billing", "core", null,
+      "Rails 7 hospital information system for a Georgian hospital group — the central, data-owning system of the HIS ecosystem. Routes Claude work through four on-demand context files instead of one monolithic CLAUDE.md."),
+
+    // contexts
+    n("ctx-se", "software_engineering", "context", "se",
+      "Writing or changing backend (Rails) or frontend (AngularJS/React) code — domain knowledge, instructions, dev pipelines, agents, and skills.",
+      { file:".claude/contexts/software_engineering.md" }),
+    n("ctx-doc", "documentation", "context", "doc",
+      "Updating wiki docs, domain/instructions files, or compliance-relevant documentation.",
+      { file:".claude/contexts/documentation.md" }),
+    n("ctx-pm", "project_management", "context", "pm",
+      "ClickUp user stories/QA tasks, tracking docs/tech_solution/ artifacts across the dev pipeline.",
+      { file:".claude/contexts/project_management.md" }),
+    n("ctx-onb", "onboarding", "context", "onb",
+      "Getting oriented to the codebase and the wider HIS ecosystem for the first time — no implementation intent yet.",
+      { file:".claude/contexts/onboarding.md" }),
+
+    // software_engineering splits into two layers, each with its own plan→breakdown→implement→docs pipeline
+    n("layer-backend", "Backend", "layer", "se",
+      "Rails 7 / Ruby side of evex_billing. Its own plan → breakdown → implement → docs pipeline (agents prefixed backend-) plus a matching skill set. Step 1 also writes frontend_contract.md — the API contract the Frontend pipeline consumes."),
+    n("layer-frontend", "Frontend", "layer", "se",
+      "Standalone AngularJS 1.5 + React 16 SPA (react2angular bridge) — a separate Node/Express deployment, not Rails/Sprockets. Its own plan → breakdown → implement → docs pipeline (agents prefixed frontend-), gated on the backend's frontend_contract.md."),
+
+    // agents — backend pipeline
+    n("ag-plan", "backend-plan", "agent", "se",
+      "Produces a Feature Execution Plan before starting any non-trivial feature. Takes a description or a ClickUp URL, outputs to docs/tech_solution/.",
+      { parent:"layer-backend" }),
+    n("ag-breakdown", "backend-breakdown", "agent", "se",
+      "Converts a Feature Execution Plan into an ordered, dependency-sorted Task List — atomic tasks with types and sizes.",
+      { parent:"layer-backend" }),
+    n("ag-implement", "backend-implement", "agent", "se",
+      "Implements features, services, workers, controllers, models, enums, or config from a Task Detail Plan into rule-compliant Ruby code.",
+      { parent:"layer-backend" }),
+    n("ag-docs", "backend-docs", "agent", "se",
+      "Updates project wiki docs, backend domain files, and shared domain files — per ClickUp task, or a full monthly sync to docs/wiki/.",
+      { parent:"layer-backend" }),
+
+    // agents — frontend pipeline
+    n("ag-fplan", "frontend-plan", "agent", "se",
+      "Produces a Frontend Execution Plan for AngularJS/React UI work from frontend_contract.md, a ClickUp link, or a description. Outputs docs/tech_solution/<task_id>/frontend_plan.md.",
+      { parent:"layer-frontend" }),
+    n("ag-fbreakdown", "frontend-breakdown", "agent", "se",
+      "Converts a Frontend Execution Plan into an ordered Task List — dependency-ordered AngularJS/React tasks, one detail plan file per task.",
+      { parent:"layer-frontend" }),
+    n("ag-fimplement", "frontend-implement", "agent", "se",
+      "Implements AngularJS/React UI code — modules, states, controllers, API factories, React components, grid/permission wiring — from a Task Detail Plan.",
+      { parent:"layer-frontend" }),
+    n("ag-fdocs", "frontend-docs", "agent", "se",
+      "Updates wiki docs, frontend domain files, and shared domain files after frontend work — per ClickUp task, or a full monthly sync.",
+      { parent:"layer-frontend" }),
+
+    // agents — platform
+    n("ag-claude", "claude", "agent", "pagents",
+      "Catch-all agent for anything that doesn't fit a more specific one — FleetView's default when no agent name is given."),
+    n("ag-guide", "claude-code-guide", "agent", "pagents",
+      "Answers questions about Claude Code, the Agent SDK, and the Claude API — hooks, slash commands, MCP, tool-use loops, caching."),
+    n("ag-explore", "Explore", "agent", "pagents",
+      "Fast read-only search — finds files by pattern, greps for symbols, answers 'where is X defined.'"),
+    n("ag-general", "general-purpose", "agent", "pagents",
+      "Researches complex questions, searches code, and executes multi-step tasks end to end."),
+    n("ag-planagent", "Plan", "agent", "pagents",
+      "Software-architect agent for implementation plans — step-by-step strategy, critical files, trade-offs."),
+    n("ag-statusline", "statusline-setup", "agent", "pagents",
+      "Configures the Claude Code status line."),
+
+    // skills — backend pipeline
+    n("sk-modsetting", "backend-add-module-setting", "skill", "se",
+      "Add a feature flag via ModuleSetting — toggled independently per environment or organization.",
+      { parent:"layer-backend" }),
+    n("sk-blueprint", "backend-new-blueprint", "skill", "se",
+      "Create a Blueprinter blueprint — file location, view naming, associations, security rules.",
+      { parent:"layer-backend" }),
+    n("sk-dictionary", "backend-new-dictionary", "skill", "se",
+      "Add an admin-managed CRUD lookup with a shared generic blueprint, no backend permission gating.",
+      { parent:"layer-backend" }),
+    n("sk-enum", "backend-new-enum", "skill", "se",
+      "Add an ExtendedEnum or ExtendedDictionary model with Redis caching — stable lookups vs. user-editable ones.",
+      { parent:"layer-backend" }),
+    n("sk-migration", "backend-new-migration", "skill", "se",
+      "Add a SQL Server or PostgreSQL migration or data task — column types, run commands, when to use a data task instead.",
+      { parent:"layer-backend" }),
+    n("sk-service", "backend-new-service", "skill", "se",
+      "Create a service object — file location, constructor pattern, transactions, job enqueueing, multi-tenancy scoping.",
+      { parent:"layer-backend" }),
+    n("sk-runspecs", "backend-run-specs", "skill", "se",
+      "Run the RSpec suite — schema reload, running a single spec, reading failures.",
+      { parent:"layer-backend" }),
+    n("sk-spec", "backend-spec", "skill", "se",
+      "Write RSpec specs for a service, controller, query, or mailer.",
+      { parent:"layer-backend" }),
+
+    // skills — frontend pipeline
+    n("sk-fstate", "frontend-new-state", "skill", "se",
+      "Scaffold a new role-menu feature — permission-gated parent module, leaf list state, and the MenuSrvc sidebar entry.",
+      { parent:"layer-frontend" }),
+    n("sk-fapi", "frontend-new-api-factory", "skill", "se",
+      "Scaffold a new API factory (app/factories/api/<Domain>/index.js) and register it in the aggregator — the 3-place registration is easy to get wrong.",
+      { parent:"layer-frontend" }),
+    n("sk-fgrid", "frontend-new-grid", "skill", "se",
+      "Scaffold a cd-grid list screen — gridOptions, columns, edit/delete/add buttons, wired to an API factory.",
+      { parent:"layer-frontend" }),
+    n("sk-fmodal", "frontend-new-modal", "skill", "se",
+      "Scaffold a new $uibModal create/edit form or confirmation dialog — state-module or directive-embedded layout, whichever fits.",
+      { parent:"layer-frontend" }),
+    n("sk-freactdll", "frontend-rebuild-react-dll", "skill", "se",
+      "Rebuild the React components DLL after touching additional_components/react_components/ — otherwise Angular silently keeps serving the old bundle.",
+      { parent:"layer-frontend" }),
+
+    // shared — spans both layers
+    n("sk-bugfix", "bug_fix", "skill", "se",
+      "Investigates a ClickUp bug in an isolated worktree, and — only if confirmed by code analysis — drives that layer's plan → breakdown → implement pipeline (backend or frontend, whichever the bug touches), verifies, then asks before commit/push/PR."),
+
+    // skill — project management
+    n("sk-clickup", "clickup-userstory", "skill", "pm",
+      "Turns an evex_billing feature into a ClickUp user story + QA subtasks, analysing both the Rails backend and the AngularJS frontend."),
+
+    // skills — platform / craft
+    n("sk-diagnose", "mattpocock-skills:diagnosing-bugs", "skill", "pskills",
+      "Diagnosis loop for hard bugs and performance regressions."),
+    n("sk-tdd", "mattpocock-skills:tdd", "skill", "pskills",
+      "Red-green-refactor, test-first feature building and bug fixing."),
+    n("sk-prototype", "mattpocock-skills:prototype", "skill", "pskills",
+      "Throwaway prototypes to sanity-check a state model or UI idea."),
+    n("sk-research", "mattpocock-skills:research", "skill", "pskills",
+      "Investigates a question against primary sources, saves findings as a repo markdown file."),
+    n("sk-domain", "mattpocock-skills:domain-modeling", "skill", "pskills",
+      "Builds and sharpens a project's domain model and ubiquitous language."),
+    n("sk-codebasedesign", "mattpocock-skills:codebase-design", "skill", "pskills",
+      "Shared vocabulary for deep modules — interfaces, seams, testability."),
+    n("sk-codereview", "mattpocock-skills:code-review", "skill", "pskills",
+      "Reviews a diff on Standards + Spec via parallel sub-agents, reports side by side."),
+    n("sk-mergeconflict", "mattpocock-skills:resolving-merge-conflicts", "skill", "pskills",
+      "Resolves an in-progress git merge or rebase conflict."),
+    n("sk-grilling", "mattpocock-skills:grilling", "skill", "pskills",
+      "Grills the user relentlessly on a plan, decision, or idea."),
+    n("sk-karpathy", "andrej-karpathy-skills:karpathy-guidelines", "skill", "pskills",
+      "Guidelines to reduce overcomplication and keep changes surgical."),
+    n("sk-dataviz", "dataviz", "skill", "pskills",
+      "Design system for any chart, graph, or dashboard — form, color, mark specs, interaction rules."),
+    n("sk-artifactdesign", "artifact-design", "skill", "pskills",
+      "Design guidance and fundamentals for Artifacts — the very skill that shaped this page."),
+    n("sk-artifactdiagram", "artifact-diagramming", "skill", "pskills",
+      "Diagramming know-how for Artifacts — when a picture earns its place, inline-SVG mechanics."),
+    n("sk-artifactcap", "artifact-capabilities", "skill", "pskills",
+      "Runtime capabilities an Artifact can be granted — live data, shared state, self-updates."),
+    n("sk-updateconfig", "update-config", "skill", "pskills",
+      "Configures the Claude Code harness via settings.json — hooks, permissions, env vars."),
+    n("sk-keybindings", "keybindings-help", "skill", "pskills",
+      "Customizes keyboard shortcuts and chord bindings."),
+    n("sk-simplify", "simplify", "skill", "pskills",
+      "Reviews changed code for reuse, simplification, efficiency — quality only, not bug-hunting."),
+    n("sk-fewerprompts", "fewer-permission-prompts", "skill", "pskills",
+      "Scans transcripts for common read-only calls, allowlists them in settings.json."),
+    n("sk-loop", "loop", "skill", "pskills",
+      "Runs a prompt or slash command on a recurring interval."),
+    n("sk-schedule", "schedule", "skill", "pskills",
+      "Creates and manages scheduled cloud agents on a cron schedule."),
+    n("sk-claudeapi", "claude-api", "skill", "pskills",
+      "Reference for the Claude API/Anthropic SDK — models, pricing, tool use, caching."),
+    n("sk-chrome", "claude-in-chrome", "skill", "pskills",
+      "Automates Chrome — clicking, filling forms, screenshots, console logs."),
+    n("sk-run", "run", "skill", "pskills",
+      "Launches and drives this project's app to see a change working."),
+    n("sk-init", "init", "skill", "pskills",
+      "Initializes a new CLAUDE.md with codebase documentation."),
+    n("sk-review", "review", "skill", "pskills",
+      "Reviews a GitHub pull request."),
+    n("sk-secreview", "security-review", "skill", "pskills",
+      "Completes a security review of pending changes on the current branch."),
+
+    // sibling repos
+    n("repo-worker", "his_integration_worker", "repo", "repos",
+      "Sibling Rails project — background-worker side of the HIS integration layer. Own .claude/ docs and root CLAUDE.md."),
+    n("repo-vendor", "his_vendor_integration_api", "repo", "repos",
+      "Sibling Rails project — API surface for third-party vendor integrations into the HIS ecosystem."),
+    n("repo-intapi", "his_integration_api", "repo", "repos",
+      "Sibling Rails project — general integration API peer to evex_billing, per the documented ecosystem map."),
+    n("repo-subscriber", "his_subscriber", "repo", "repos",
+      "Sibling Rails project — subscribes to and processes events published across the HIS ecosystem."),
+    n("repo-broker", "evex_message_broker", "repo", "repos",
+      "Sibling Rails project — message broker coordinating async communication between HIS services."),
+
+    // tools
+    n("tool-lsp", "Ruby LSP", "tool", "tools",
+      "mcp__ruby-lsp — hover, go-to-definition, references, rename-symbol, diagnostics, and in-place edits for Ruby code."),
+    n("tool-ide", "IDE Diagnostics", "tool", "tools",
+      "mcp__ide__getDiagnostics — live diagnostics pulled straight from the connected IDE.")
+  ];
+
+  var EDGES = [];
+  function link(a,b,kind){ EDGES.push({a:a,b:b,kind:kind||"direct"}); }
+
+  // core -> every context / repo / tool / platform agent / platform skill
+  ["ctx-se","ctx-doc","ctx-pm","ctx-onb"].forEach(function(id){ link("core", id, "direct"); });
+  ["repo-worker","repo-vendor","repo-intapi","repo-subscriber","repo-broker"].forEach(function(id){ link("core", id, "direct"); });
+  ["tool-lsp","tool-ide"].forEach(function(id){ link("core", id, "direct"); });
+  ["ag-claude","ag-guide","ag-explore","ag-general","ag-planagent","ag-statusline"].forEach(function(id){ link("core", id, "direct"); });
+  NODES.filter(function(nd){ return nd.type==="skill" && nd.sector==="pskills"; })
+       .forEach(function(nd){ link("core", nd.id, "direct"); });
+
+  // context -> its two layers, and the shared bug_fix skill
+  link("ctx-se", "layer-backend", "context");
+  link("ctx-se", "layer-frontend", "context");
+  link("ctx-se", "sk-bugfix", "context");
+  link("ctx-pm", "sk-clickup", "context");
+
+  // layer -> its own pipeline agents + skills
+  NODES.filter(function(nd){ return nd.parent === "layer-backend"; })
+       .forEach(function(nd){ link("layer-backend", nd.id, "context"); });
+  NODES.filter(function(nd){ return nd.parent === "layer-frontend"; })
+       .forEach(function(nd){ link("layer-frontend", nd.id, "context"); });
+
+  // pipeline — the real backend delivery chain
+  link("sk-bugfix", "ag-plan", "pipeline");
+  link("ag-plan", "ag-breakdown", "pipeline");
+  link("ag-breakdown", "ag-implement", "pipeline");
+  link("ag-implement", "sk-spec", "pipeline");
+  link("sk-spec", "sk-runspecs", "pipeline");
+  link("ag-implement", "ag-docs", "pipeline");
+
+  // pipeline — the real frontend delivery chain, handed off from the backend plan
+  link("sk-bugfix", "ag-fplan", "pipeline");
+  link("ag-plan", "ag-fplan", "pipeline"); // frontend_contract.md handoff
+  link("ag-fplan", "ag-fbreakdown", "pipeline");
+  link("ag-fbreakdown", "ag-fimplement", "pipeline");
+  link("ag-fimplement", "ag-fdocs", "pipeline");
+  link("sk-fstate", "sk-fapi", "pipeline");
+  link("sk-fapi", "sk-fgrid", "pipeline");
+  link("sk-fgrid", "sk-fmodal", "pipeline");
+
+  // cross-links
+  ["repo-worker","repo-vendor","repo-intapi","repo-subscriber","repo-broker"].forEach(function(id){ link("ctx-onb", id, "cross"); });
+  link("tool-lsp", "ctx-se", "cross");
+  link("tool-ide", "ctx-se", "cross");
+  link("ctx-doc", "ag-docs", "cross");
+  link("ctx-doc", "ag-fdocs", "cross");
+
+  var byId = {};
+  NODES.forEach(function(nd){ byId[nd.id] = nd; });
+
+  var neighbors = {};
+  NODES.forEach(function(nd){ neighbors[nd.id] = new Set(); });
+  EDGES.forEach(function(e){ neighbors[e.a].add(e.b); neighbors[e.b].add(e.a); });
+
+  /* ============================================================
+     LAYOUT
+     ============================================================ */
+
+  function placeSubCluster(layerNode, kids, start, span){
+    if (layerNode) layerNode.angleDeg = start + span / 2;
+    var margin = Math.min(span * 0.1, 5);
+    var s0 = start + margin, us = Math.max(span - 2 * margin, 1);
+    kids.forEach(function(nd, idx){
+      var t = kids.length === 1 ? 0.5 : idx / (kids.length - 1);
+      nd.angleDeg = s0 + t * us;
+    });
+  }
+
+  // software_engineering has two sub-pipelines (Backend / Frontend) plus the
+  // shared bug_fix skill sitting between them — a second, nested angle split.
+  function layoutSoftwareEngineering(list, start, span){
+    var hub = list.filter(function(nd){ return nd.id === "ctx-se"; })[0];
+    var backendLayer = list.filter(function(nd){ return nd.id === "layer-backend"; })[0];
+    var frontendLayer = list.filter(function(nd){ return nd.id === "layer-frontend"; })[0];
+    var bugfix = list.filter(function(nd){ return nd.id === "sk-bugfix"; })[0];
+    var backendKids = list.filter(function(nd){ return nd.parent === "layer-backend"; });
+    var frontendKids = list.filter(function(nd){ return nd.parent === "layer-frontend"; });
+
+    if (hub) hub.angleDeg = start + span / 2;
+
+    var margin = Math.min(span * 0.05, 4);
+    var innerStart = start + margin, innerSpan = span - 2 * margin;
+
+    var wB = Math.sqrt(backendKids.length + 1);
+    var wF = Math.sqrt(frontendKids.length + 1);
+    var wX = 1;
+    var sum = wB + wF + wX;
+
+    var spanB = innerSpan * wB / sum;
+    var spanX = innerSpan * wX / sum;
+    var spanF = innerSpan * wF / sum;
+
+    var startB = innerStart;
+    var startX = startB + spanB;
+    var startF = startX + spanX;
+
+    placeSubCluster(backendLayer, backendKids, startB, spanB);
+    if (bugfix) bugfix.angleDeg = startX + spanX / 2;
+    placeSubCluster(frontendLayer, frontendKids, startF, spanF);
+  }
+
+  function layout(){
+    var bySector = {};
+    SECTORS.forEach(function(s){ bySector[s.key] = []; });
+    NODES.forEach(function(nd){ if (nd.sector) bySector[nd.sector].push(nd); });
+
+    var weights = SECTORS.map(function(s){ return Math.sqrt(bySector[s.key].length + 1); });
+    var totalW = weights.reduce(function(a,b){ return a+b; }, 0);
+
+    var angle = -90; // start at top, degrees, clockwise
+    SECTORS.forEach(function(s, i){
+      var span = 360 * weights[i] / totalW;
+      var list = bySector[s.key];
+      s.start = angle; s.span = span; s.mid = angle + span / 2;
+
+      if (s.key === "se"){
+        layoutSoftwareEngineering(list, angle, span);
+      } else {
+        var hub = null, rest = [];
+        list.forEach(function(nd){ if (nd.type === "context") hub = nd; else rest.push(nd); });
+
+        var margin = Math.min(span * 0.14, 7);
+        var usableStart = angle + margin;
+        var usableSpan = Math.max(span - 2 * margin, 1);
+
+        if (hub) hub.angleDeg = angle + span / 2;
+        rest.forEach(function(nd, idx){
+          var t = rest.length === 1 ? 0.5 : idx / (rest.length - 1);
+          nd.angleDeg = usableStart + t * usableSpan;
+        });
+      }
+
+      angle += span;
+    });
+
+    NODES.forEach(function(nd){
+      nd.baseR = RING_BY_TYPE[nd.type] || 0;
+      var rad = (nd.angleDeg || 0) * Math.PI / 180;
+      nd.ux = Math.cos(rad); // unit direction, reused on resize
+      nd.uy = Math.sin(rad);
+    });
+  }
+  layout();
+
+  /* ============================================================
+     CANVAS / SIM SETUP
+     ============================================================ */
+
+  var stage = document.getElementById("stage");
+  var canvas = document.getElementById("graph");
+  var ctx = canvas.getContext("2d");
+  var tooltip = document.getElementById("tooltip");
+  var drawer = document.getElementById("drawer");
+  var drawerBody = document.getElementById("drawerBody");
+
+  var REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", function(e){ REDUCE = e.matches; });
+
+  var cx = 0, cy = 0, SCALE = 1;
+
+  function resize(){
+    var w = stage.clientWidth, h = stage.clientHeight;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = w / 2; cy = h / 2;
+    var available = Math.min(w, h) / 2 - 46;
+    SCALE = Math.max(0.42, Math.min(1.35, available / 320));
+    NODES.forEach(function(nd){
+      nd.homeX = nd.ux * nd.baseR * SCALE;
+      nd.homeY = nd.uy * nd.baseR * SCALE;
+      if (nd.x === undefined){ nd.x = nd.homeX; nd.y = nd.homeY; nd.vx = 0; nd.vy = 0; }
+    });
+  }
+
+  NODES.forEach(function(nd, i){ nd.bornAt = i * 11; nd._lc = nd.label.toLowerCase(); });
+  var startTime = performance.now();
+
+  function readColor(varName){
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  }
+  var PAL = {};
+  var rgbCache = {};
+  function refreshPalette(){
+    PAL.text = readColor("--text");
+    PAL.textDim = readColor("--text-dim");
+    PAL.textFaint = readColor("--text-faint");
+    PAL.accent = readColor("--accent");
+    PAL.accentStrong = readColor("--accent-strong");
+    PAL.hairline = readColor("--hairline");
+    for (var t in TYPES) PAL[t] = readColor(TYPES[t].varName);
+    PAL.font = getComputedStyle(document.body).getPropertyValue("--font-mono");
+    rgbCache = {};
+    buildGlows();
+  }
+  // Perf: one pre-rendered glow sprite per node type instead of a radial gradient per node per frame.
+  var GLOW = {}, GLOW_PX = 64;
+  function buildGlows(){
+    for (var t in TYPES){
+      var c = document.createElement("canvas");
+      c.width = c.height = GLOW_PX * 2;
+      var g = c.getContext("2d");
+      var grad = g.createRadialGradient(GLOW_PX, GLOW_PX, 0, GLOW_PX, GLOW_PX, GLOW_PX);
+      grad.addColorStop(0, rgba(PAL[t], 0.30));
+      grad.addColorStop(1, rgba(PAL[t], 0));
+      g.fillStyle = grad;
+      g.fillRect(0, 0, GLOW_PX * 2, GLOW_PX * 2);
+      GLOW[t] = c;
+    }
+  }
+  refreshPalette();
+
+  var themeModes = ["auto","dark","light"];
+  var themeIdx = 0;
+  var themeBtn = document.getElementById("themeBtn");
+  themeBtn.addEventListener("click", function(){
+    themeIdx = (themeIdx + 1) % themeModes.length;
+    var mode = themeModes[themeIdx];
+    if (mode === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", mode);
+    themeBtn.textContent = mode.toUpperCase();
+    refreshPalette();
+  });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", refreshPalette);
+
+  function hexToRgb(hex){
+    hex = hex.trim();
+    if (hex[0] === "#"){
+      var v = hex.length === 4
+        ? hex.slice(1).split("").map(function(c){ return c+c; })
+        : [hex.slice(1,3), hex.slice(3,5), hex.slice(5,7)];
+      return v.map(function(s){ return parseInt(s,16); });
+    }
+    var m = hex.match(/[\d.]+/g) || [0,0,0];
+    return [parseFloat(m[0]), parseFloat(m[1]), parseFloat(m[2])];
+  }
+  function rgba(hex, a){ var c = rgbCache[hex] || (rgbCache[hex] = hexToRgb(hex)); return "rgba("+c[0]+","+c[1]+","+c[2]+","+a+")"; }
+
+  /* ============================================================
+     STATE
+     ============================================================ */
+
+  var activeTypes = new Set(Object.keys(TYPES));
+  var searchTerm = "";
+  var hoverNode = null, selectedNode = null, dragNode = null;
+  var mouse = { x:-9999, y:-9999, downX:0, downY:0, moved:0 };
+
+  function neighborSet(id){
+    var s = new Set([id]);
+    neighbors[id].forEach(function(x){ s.add(x); });
+    return s;
+  }
+
+  function nodeAlpha(nd){
+    var a = 1;
+    if (!activeTypes.has(nd.type) && nd.type !== "core") a *= 0.08;
+    if (searchTerm){
+      var match = nd._lc.indexOf(searchTerm) !== -1;
+      a *= match ? 1 : 0.1;
+    }
+    if (focusSet) a *= focusSet.has(nd.id) ? 1 : 0.22;
+    return a;
+  }
+  var focusSet = null;
+
+  function edgeAlpha(e){
+    return Math.min(byId[e.a]._al, byId[e.b]._al);
+  }
+
+  /* ============================================================
+     PHYSICS
+     ============================================================ */
+
+  function step(dt){
+    var n = NODES.length;
+    for (var i=0;i<n;i++){
+      var a = NODES[i];
+      if (a === dragNode) continue;
+      var fx = (a.homeX - a.x) * 0.02;
+      var fy = (a.homeY - a.y) * 0.02;
+      for (var j=0;j<n;j++){
+        if (i===j) continue;
+        var b = NODES[j];
+        var dx = a.x - b.x, dy = a.y - b.y;
+        var d2 = dx*dx + dy*dy + 0.01;
+        if (d2 > 20000) continue;
+        var d = Math.sqrt(d2);
+        var f = Math.min(420 / d2, 6);
+        fx += (dx/d) * f;
+        fy += (dy/d) * f;
+      }
+      if (!REDUCE){
+        var t = (startTime + a.bornAt) * 0.001;
+        fx += Math.sin(t*0.6 + i) * 0.06;
+        fy += Math.cos(t*0.5 + i*1.3) * 0.06;
+      }
+      a.vx = (a.vx + fx*dt) * 0.86;
+      a.vy = (a.vy + fy*dt) * 0.86;
+    }
+    for (i=0;i<n;i++){
+      var nd = NODES[i];
+      if (nd === dragNode || nd.type === "core") continue;
+      nd.x += nd.vx * dt;
+      nd.y += nd.vy * dt;
+    }
+    if (byId.core){ byId.core.x = 0; byId.core.y = 0; }
+  }
+
+  /* ============================================================
+     DRAW
+     ============================================================ */
+
+  function edgeCurve(a,b){
+    var mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+    var dx = b.x-a.x, dy = b.y-a.y;
+    var len = Math.sqrt(dx*dx+dy*dy) || 1;
+    var nx = -dy/len, ny = dx/len;
+    var bend = Math.min(len*0.08, 22) * (((a.id.length+b.id.length) % 2) ? 1 : -1);
+    return { cx: mx + nx*bend, cy: my + ny*bend };
+  }
+
+  function pointOnQuad(a, c, b, t){
+    var x = (1-t)*(1-t)*a.x + 2*(1-t)*t*c.cx + t*t*b.x;
+    var y = (1-t)*(1-t)*a.y + 2*(1-t)*t*c.cy + t*t*b.y;
+    return { x:x, y:y };
+  }
+
+  var rimLabelR = RING_BY_TYPE.skill * 1.0;
+
+  function draw(now){
+    var w = stage.clientWidth, h = stage.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    var focusNode = hoverNode || selectedNode;
+    focusSet = focusNode ? neighborSet(focusNode.id) : null;
+    for (var ni=0; ni<NODES.length; ni++) NODES[ni]._al = nodeAlpha(NODES[ni]);
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // radar rings
+    ctx.strokeStyle = PAL.hairline;
+    ctx.lineWidth = 1;
+    [RING_BY_TYPE.context, RING_BY_TYPE.repo, RING_BY_TYPE.agent, RING_BY_TYPE.skill].forEach(function(r){
+      ctx.beginPath();
+      ctx.arc(0,0, r*SCALE, 0, Math.PI*2);
+      ctx.stroke();
+    });
+
+    // sector divider spokes + rim labels
+    ctx.font = "600 10px " + PAL.font;
+    SECTORS.forEach(function(s){
+      var rad0 = s.start * Math.PI/180;
+      ctx.strokeStyle = PAL.hairline;
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.lineTo(Math.cos(rad0)*rimLabelR*SCALE, Math.sin(rad0)*rimLabelR*SCALE);
+      ctx.stroke();
+
+      var radM = s.mid * Math.PI/180;
+      var lx = Math.cos(radM) * (rimLabelR*SCALE + 22);
+      var ly = Math.sin(radM) * (rimLabelR*SCALE + 22);
+      ctx.fillStyle = PAL.textFaint;
+      ctx.textAlign = Math.cos(radM) > 0.15 ? "left" : (Math.cos(radM) < -0.15 ? "right" : "center");
+      ctx.textBaseline = "middle";
+      ctx.fillText(s.label, lx, ly);
+    });
+
+    // ambient sweep
+    if (!REDUCE){
+      var sweepAngle = ((now - startTime) * 0.00025) % (Math.PI*2);
+      var grad = ctx.createConicGradient ? ctx.createConicGradient(sweepAngle, 0, 0) : null;
+      if (grad){
+        grad.addColorStop(0, rgba(PAL.accent, 0.10));
+        grad.addColorStop(0.06, rgba(PAL.accent, 0));
+        grad.addColorStop(1, rgba(PAL.accent, 0));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0,0, rimLabelR*SCALE, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // edges
+    EDGES.forEach(function(e){
+      var a = byId[e.a], b = byId[e.b];
+      var al = edgeAlpha(e);
+      if (al < 0.03) return;
+      var curve = edgeCurve(a,b);
+      var focus = hoverNode || selectedNode;
+      var isFocusEdge = focus && (e.a === focus.id || e.b === focus.id);
+
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.quadraticCurveTo(curve.cx, curve.cy, b.x, b.y);
+
+      if (e.kind === "pipeline"){
+        ctx.setLineDash([5,5]);
+        ctx.strokeStyle = rgba(PAL.accentStrong, al * (isFocusEdge ? 0.95 : 0.55));
+        ctx.lineWidth = isFocusEdge ? 1.8 : 1.3;
+      } else if (e.kind === "cross"){
+        ctx.setLineDash([1,4]);
+        ctx.strokeStyle = rgba(PAL.textFaint, al * (isFocusEdge ? 0.8 : 0.4));
+        ctx.lineWidth = 1;
+      } else {
+        ctx.setLineDash([]);
+        var mixHex = e.kind === "context" ? PAL[b.type] : PAL[a.type];
+        ctx.strokeStyle = rgba(mixHex, al * (isFocusEdge ? 0.85 : 0.28));
+        ctx.lineWidth = isFocusEdge ? 1.6 : 1;
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (e.kind === "pipeline" && !REDUCE && al > 0.2){
+        var speed = 0.00035;
+        var tt = ((now - startTime) * speed + (e.a.length*7 % 100)/100) % 1;
+        var p = pointOnQuad(a, curve, b, tt);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.4, 0, Math.PI*2);
+        ctx.fillStyle = rgba(PAL.accentStrong, al);
+        ctx.fill();
+      }
+    });
+
+    // nodes
+    var order = NODES.slice().sort(function(x,y){
+      return (x===selectedNode||x===hoverNode?1:0) - (y===selectedNode||y===hoverNode?1:0);
+    });
+    order.forEach(function(nd){
+      var life = REDUCE ? 1 : Math.max(0, Math.min(1, (now - startTime - nd.bornAt) / 340));
+      if (life <= 0) return;
+      var ease = 1 - Math.pow(1-life, 3);
+      var al = nd._al * ease;
+      var baseR = TYPES[nd.type].r * (0.7 + 0.3*ease);
+      var isFocus = nd === hoverNode || nd === selectedNode;
+      var pulse = nd.type === "core" && !REDUCE ? Math.sin((now-startTime)*0.0022)*1.4 : 0;
+      var r = baseR + (isFocus ? 3 : 0) + pulse;
+      var color = PAL[nd.type];
+
+      var gr = r*3.2;
+      ctx.globalAlpha = al;
+      ctx.drawImage(GLOW[nd.type], nd.x-gr, nd.y-gr, gr*2, gr*2);
+      ctx.globalAlpha = 1;
+
+      ctx.beginPath();
+      ctx.arc(nd.x, nd.y, r, 0, Math.PI*2);
+      ctx.fillStyle = rgba(color, 0.92*al);
+      ctx.fill();
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = rgba(PAL.text, 0.5*al);
+      ctx.stroke();
+
+      if (nd === selectedNode){
+        var ringR = r + 6 + (REDUCE?0:Math.sin((now-startTime)*0.006)*2);
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, ringR, 0, Math.PI*2);
+        ctx.strokeStyle = rgba(PAL.accentStrong, 0.8*al);
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      }
+
+      var showLabel = TYPES[nd.type].always || isFocus || (searchTerm && nd._lc.indexOf(searchTerm) !== -1);
+      if (showLabel && al > 0.15){
+        var lx2 = nd.x + (nd.ux||0) * (r+10);
+        var ly2 = nd.y + (nd.uy||0) * (r+10);
+        ctx.font = (nd.type==="core" ? "600 12px " : "500 10.5px ") + PAL.font;
+        ctx.fillStyle = rgba(PAL.text, Math.min(1, al+0.15));
+        ctx.textAlign = (nd.ux||0) > 0.12 ? "left" : ((nd.ux||0) < -0.12 ? "right" : "center");
+        ctx.textBaseline = "middle";
+        ctx.fillText(nd.label, lx2, ly2);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  /* ============================================================
+     LOOP
+     ============================================================ */
+
+  var last = performance.now();
+  // Perf: stop the loop while the embed is scrolled out of view, the window is hidden,
+  // or the app window is unfocused (WebKitGTK keeps rAF going for covered windows).
+  var running = true, onScreen = true;
+  var host = window;
+  try { if (window.top && window.top.document) host = window.top; } catch (e) {}
+  function appFocused(){ try { return host.document.hasFocus(); } catch (e) { return true; } }
+  function wantRun(){ return onScreen && !document.hidden && appFocused(); }
+  function kick(){
+    if (running || !wantRun()) return;
+    running = true; last = performance.now(); requestAnimationFrame(frame);
+  }
+  document.addEventListener("visibilitychange", kick);
+  host.addEventListener("focus", kick);
+  window.addEventListener("focus", kick);
+  if (window.IntersectionObserver){
+    new IntersectionObserver(function(es){ onScreen = es[es.length-1].isIntersecting; kick(); }).observe(stage);
+  }
+  function frame(now){
+    if (!wantRun()){ running = false; return; }
+    var dt = Math.min(32, now-last)/16.6;
+    last = now;
+    step(dt);
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  /* ============================================================
+     INTERACTION
+     ============================================================ */
+
+  function nodeAt(px, py){
+    var lx = px - cx, ly = py - cy;
+    var best = null, bestD = 1e9;
+    for (var i=NODES.length-1;i>=0;i--){
+      var nd = NODES[i];
+      var dx = lx-nd.x, dy = ly-nd.y;
+      var d = Math.sqrt(dx*dx+dy*dy);
+      var hit = TYPES[nd.type].r + 5;
+      if (d < hit && d < bestD){ best = nd; bestD = d; }
+    }
+    return best;
+  }
+
+  canvas.addEventListener("mousemove", function(ev){
+    var rect = canvas.getBoundingClientRect();
+    mouse.x = ev.clientX - rect.left;
+    mouse.y = ev.clientY - rect.top;
+    mouse.moved += Math.abs(ev.movementX||0) + Math.abs(ev.movementY||0);
+
+    if (dragNode){
+      dragNode.x = mouse.x - cx;
+      dragNode.y = mouse.y - cy;
+      dragNode.vx = 0; dragNode.vy = 0;
+      return;
+    }
+    var hit = nodeAt(mouse.x, mouse.y);
+    hoverNode = hit;
+    canvas.style.cursor = hit ? "pointer" : "default";
+    if (hit){
+      tooltip.hidden = false;
+      tooltip.style.left = mouse.x + "px";
+      tooltip.style.top = mouse.y + "px";
+      tooltip.textContent = hit.label;
+    } else {
+      tooltip.hidden = true;
+    }
+  });
+
+  canvas.addEventListener("mousedown", function(ev){
+    var rect = canvas.getBoundingClientRect();
+    mouse.downX = ev.clientX - rect.left; mouse.downY = ev.clientY - rect.top; mouse.moved = 0;
+    var hit = nodeAt(mouse.downX, mouse.downY);
+    if (hit) dragNode = hit;
+  });
+
+  window.addEventListener("mouseup", function(){
+    if (dragNode && mouse.moved < 4){
+      selectNode(dragNode);
+    } else if (!dragNode && mouse.moved < 4){
+      var hit = nodeAt(mouse.x, mouse.y);
+      if (hit) selectNode(hit); else deselect();
+    }
+    dragNode = null;
+  });
+
+  canvas.addEventListener("mouseleave", function(){ hoverNode = null; tooltip.hidden = true; });
+
+  // touch support (basic)
+  canvas.addEventListener("touchstart", function(ev){
+    var rect = canvas.getBoundingClientRect();
+    var t = ev.touches[0];
+    mouse.x = t.clientX-rect.left; mouse.y = t.clientY-rect.top; mouse.moved = 0;
+    var hit = nodeAt(mouse.x, mouse.y);
+    if (hit) dragNode = hit;
+  }, {passive:true});
+  canvas.addEventListener("touchmove", function(ev){
+    var rect = canvas.getBoundingClientRect();
+    var t = ev.touches[0];
+    mouse.x = t.clientX-rect.left; mouse.y = t.clientY-rect.top;
+    mouse.moved += 5;
+    if (dragNode){ dragNode.x = mouse.x-cx; dragNode.y = mouse.y-cy; dragNode.vx=0; dragNode.vy=0; }
+  }, {passive:true});
+  canvas.addEventListener("touchend", function(){
+    if (dragNode && mouse.moved < 8) selectNode(dragNode);
+    dragNode = null;
+  });
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  function selectNode(nd){
+    selectedNode = nd;
+    var meta = TYPES[nd.type];
+    var extra = nd.file ? '<div class="meta">' + escapeHtml(nd.file) + '</div>' : "";
+    var neighborIds = Array.from(neighbors[nd.id] || []);
+    var chips = neighborIds.map(function(id){
+      var other = byId[id];
+      return '<button class="chip" data-goto="'+id+'">'+escapeHtml(other.label)+'</button>';
+    }).join("");
+    drawerBody.innerHTML =
+      '<div class="pill" style="color:'+PAL[nd.type]+'"><span class="dot"></span>'+meta.label+'</div>' +
+      '<h3>'+escapeHtml(nd.label)+'</h3>' +
+      extra +
+      '<p class="desc">'+escapeHtml(nd.desc)+'</p>' +
+      (neighborIds.length ? '<h4>Connected to ('+neighborIds.length+')</h4><div class="chiplist">'+chips+'</div>' : '');
+    drawer.classList.add("open");
+    Array.prototype.forEach.call(drawerBody.querySelectorAll("[data-goto]"), function(btn){
+      btn.addEventListener("click", function(){ selectNode(byId[btn.getAttribute("data-goto")]); });
+    });
+  }
+  function deselect(){ selectedNode = null; drawer.classList.remove("open"); }
+
+  document.getElementById("drawerClose").addEventListener("click", deselect);
+  window.addEventListener("keydown", function(ev){ if (ev.key === "Escape") deselect(); });
+
+  /* ---------- legend ---------- */
+  var legendRows = document.getElementById("legendRows");
+  Object.keys(TYPES).forEach(function(t){
+    var count = NODES.filter(function(nd){ return nd.type===t; }).length;
+    var row = document.createElement("button");
+    row.className = "legend-row";
+    row.type = "button";
+    row.innerHTML = '<span class="legend-dot" style="background:'+PAL[t]+';color:'+PAL[t]+'"></span>' +
+      '<span class="lname">'+TYPES[t].label+'</span><span class="lcount">'+count+'</span>';
+    row.addEventListener("click", function(){
+      if (activeTypes.has(t)){
+        if (activeTypes.size > 1) activeTypes.delete(t);
+      } else {
+        activeTypes.add(t);
+      }
+      row.classList.toggle("inactive", !activeTypes.has(t));
+    });
+    legendRows.appendChild(row);
+  });
+  document.getElementById("legendReset").addEventListener("click", function(){
+    activeTypes = new Set(Object.keys(TYPES));
+    Array.prototype.forEach.call(legendRows.querySelectorAll(".legend-row"), function(r){ r.classList.remove("inactive"); });
+  });
+
+  /* ---------- search ---------- */
+  document.getElementById("search").addEventListener("input", function(ev){
+    searchTerm = ev.target.value.trim().toLowerCase();
+  });
+
+  /* ---------- stats ---------- */
+  document.getElementById("stats").innerHTML =
+    '<span><b>'+NODES.length+'</b> nodes</span><span><b>'+EDGES.length+'</b> links</span><span><b>'+SECTORS.length+'</b> clusters</span>';
+
+  /* ---------- boot ---------- */
+  window.addEventListener("resize", resize);
+  resize();
+  requestAnimationFrame(function(t){ startTime = t; last = t; requestAnimationFrame(frame); });
+})();
+</script>
+
+</body></html>

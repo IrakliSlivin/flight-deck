@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-reminder-settings"
+description = "Enables the get_reminder_settings command without any pre-configured scope."
+commands.allow = ["get_reminder_settings"]
+
+[[permission]]
+identifier = "deny-get-reminder-settings"
+description = "Denies the get_reminder_settings command without any pre-configured scope."
+commands.deny = ["get_reminder_settings"]
