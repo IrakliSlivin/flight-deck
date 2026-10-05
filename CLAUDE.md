@@ -1,6 +1,6 @@
 # Flight Deck
 
-Personal desktop "start of day" dashboard for a developer (the user's nickname is "tsetse fly"; the logo is a stylized tsetse fly). Formerly "Daily Dashboard". Built with Tauri 2 (Rust backend) + React 19 + TypeScript + Vite 8 + Tailwind 4. Linux is the main target (Node version in `.nvmrc` is 20).
+Personal desktop "start of day" dashboard for a developer (the user's nickname is "tsetse fly"; the logo is a stylized tsetse fly). Formerly "Daily Dashboard". Built with Tauri 2 (Rust backend) + React 19 + TypeScript + Vite 8 + Tailwind 4. Linux is the main target; macOS also builds (Linux-only code — zbus, GNOME notification hints, the GTK ghost window — is behind `cfg(target_os)`; on macOS sounds map to system sounds Glass/Hero/Pop). Node version in `.nvmrc` is 20. On this Mac Rust comes from Homebrew's keg-only `rustup` (`/opt/homebrew/opt/rustup/bin`).
 
 ## Running
 
@@ -9,7 +9,7 @@ Personal desktop "start of day" dashboard for a developer (the user's nickname i
 - `npm run tauri dev` — full app (Vite dev server on port 1420, strict)
 - `npm run build` — `tsc` type-check + Vite build
 - `npm run tauri build` — packaged app
-- **Releases**: `.github/workflows/release.yml` builds the `.deb` and `.AppImage` on `ubuntu-22.04`. Pushing a tag `vX.Y.Z` (it must equal `version` in `tauri.conf.json`; bump `package.json` and `Cargo.toml` too) publishes a GitHub Release with fixed file names (`flight-deck_amd64.deb`, `flight-deck_amd64.AppImage`), which the README's `releases/latest/download/...` links depend on. A manual run (workflow_dispatch) only builds and uploads them as an artifact.
+- **Releases**: `.github/workflows/release.yml` builds the `.deb` and `.AppImage` on `ubuntu-22.04` and a universal `.dmg` on `macos-latest` (`flight-deck_universal.dmg`, ad-hoc signed via `bundle.macOS.signingIdentity: "-"`, not notarized, so users must click Open Anyway or `xattr -cr`); a `publish` job creates the release once both finish. Pushing a tag `vX.Y.Z` (it must equal `version` in `tauri.conf.json`; bump `package.json` and `Cargo.toml` too) publishes a GitHub Release with fixed file names (`flight-deck_amd64.deb`, `flight-deck_amd64.AppImage`), which the README's `releases/latest/download/...` links depend on. A manual run (workflow_dispatch) only builds and uploads them as an artifact.
 - `npx tauri build --no-bundle && ./scripts/install-desktop.sh` — installs the release build into the user's GNOME app menu (`~/.local/bin/flight-deck` plus a `.desktop` entry and hicolor icons, no sudo)
 
 ## Branding
