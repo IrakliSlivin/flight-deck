@@ -84,6 +84,24 @@ chmod +x flight-deck_amd64.AppImage
 If it says FUSE is missing, install `libfuse2` (on Ubuntu 24.04 and newer:
 `libfuse2t64`).
 
+### macOS
+
+Download
+[flight-deck_universal.dmg](https://github.com/IrakliSlivin/flight-deck/releases/latest/download/flight-deck_universal.dmg)
+(Apple Silicon and Intel, macOS 11+), open it and drag **Flight Deck** into
+Applications.
+
+The app isn't notarized by Apple, so the first launch says it can't be
+verified. Either open System Settings → Privacy & Security and click
+**Open Anyway**, or run once:
+
+```bash
+xattr -cr "/Applications/Flight Deck.app"
+```
+
+On macOS the Outlook window may flash briefly while it loads the inbox, and
+notification sounds use the built-in system sounds.
+
 ### Switching from a source install
 
 If you installed with `scripts/install-desktop.sh` before, remove that copy

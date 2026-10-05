@@ -22,7 +22,11 @@ const SCRAPER: &str = include_str!("outlook_scrape.js");
 // away Chrome versions it considers outdated, so the version follows the date (see chrome_major).
 fn user_agent() -> String {
     let major = chrome_major(chrono::Utc::now().date_naive());
-    format!("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36")
+    #[cfg(target_os = "macos")]
+    let platform = "Macintosh; Intel Mac OS X 10_15_7";
+    #[cfg(not(target_os = "macos"))]
+    let platform = "X11; Linux x86_64";
+    format!("Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36")
 }
 
 /// Current Chrome stable major version, estimated from Chrome 140's release (2025-09-02) and a
