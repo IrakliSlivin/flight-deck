@@ -8,6 +8,7 @@ import {
   type ReminderSettings,
   type SoundId,
 } from "../lib/reminders";
+import { CLAUDE_CLI_KEY, checkClaudeCli, type ClaudeCliCheck } from "../lib/outlook";
 import { CredentialField } from "./CredentialField";
 import { CloseIcon } from "./Icons";
 
@@ -246,6 +247,63 @@ function NotificationsSection() {
   );
 }
 
+function ClaudeCliSection() {
+  const [check, setCheck] = useState<ClaudeCliCheck | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function test() {
+    setBusy(true);
+    setCheck(null);
+    setError(null);
+    try {
+      setCheck(await checkClaudeCli());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section
+      className="rise flex flex-col gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4"
+      style={{ animationDelay: "115ms" }}
+    >
+      <div>
+        <h3 className="text-sm font-semibold text-slate-100">Claude CLI</h3>
+        <p className="text-xs text-slate-400">
+          Runs the AI mail brief on your Claude Code login. Leave blank for <code>claude</code>.
+        </p>
+      </div>
+      <CredentialField
+        fieldKey={CLAUDE_CLI_KEY}
+        label="Command or path"
+        secret={false}
+      />
+      <p className="text-xs text-slate-500">
+        A full path (<code>~/.local/bin/claude-work</code>) or a name on PATH. Shell aliases don't
+        work here — point at the script the alias runs. Save, then Check.
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={test}
+          disabled={busy}
+          className="label rounded-lg border border-white/10 px-3 py-1.5 !text-[11px] text-slate-300 transition hover:text-white disabled:opacity-40"
+        >
+          {busy ? "Checking…" : "Check"}
+        </button>
+        {check && (
+          <span className="min-w-0 truncate text-xs text-emerald-300">
+            {check.version} — {check.path}
+          </span>
+        )}
+      </div>
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+    </section>
+  );
+}
+
 export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   useEffect(() => {
     if (!open) return;
@@ -283,6 +341,7 @@ export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () =
 
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6">
           <NotificationsSection />
+          <ClaudeCliSection />
           {INTEGRATIONS.map((integration, i) => (
             <section
               key={integration.id}

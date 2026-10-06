@@ -215,8 +215,14 @@ routine automated mail (newsletters, notifications, digests) unless it reports s
 action, such as a failure, an approval request or a deadline. Use the id of the most relevant \
 message for each item.";
 
+const SERVICE: &str = "com.ubumtu.daily-dashboard";
+const CLI_KEY: &str = "claude.cli_path";
+
 /// The Claude Code CLI. Launched from the app menu, PATH may not include ~/.local/bin.
 fn claude_cli() -> std::path::PathBuf {
+    if let Some(configured) = configured_cli() {
+        return configured;
+    }
     let local = dirs_home().map(|h| h.join(".local/bin/claude"));
     match local {
         Some(path) if path.exists() => path,
@@ -224,8 +230,55 @@ fn claude_cli() -> std::path::PathBuf {
     }
 }
 
+fn configured_cli() -> Option<std::path::PathBuf> {
+    let raw = keyring::Entry::new(SERVICE, CLI_KEY)
+        .ok()?
+        .get_password()
+        .ok()?;
+    let raw = raw.trim();
+    (!raw.is_empty()).then(|| expand_home(raw))
+}
+
+fn expand_home(raw: &str) -> std::path::PathBuf {
+    match raw.strip_prefix("~/") {
+        Some(rest) => dirs_home().map(|h| h.join(rest)).unwrap_or_else(|| raw.into()),
+        None => raw.into(),
+    }
+}
+
 fn dirs_home() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(Into::into)
+}
+
+#[derive(Serialize)]
+pub struct ClaudeCliCheck {
+    path: String,
+    version: String,
+}
+
+#[tauri::command]
+pub async fn check_claude_cli(path: Option<String>) -> Result<ClaudeCliCheck, String> {
+    let cli = match path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => expand_home(p),
+        None => claude_cli(),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = std::process::Command::new(&cli)
+            .arg("--version")
+            .current_dir(std::env::temp_dir())
+            .output()
+            .map_err(|e| format!("Couldn't run {}: {e}", cli.display()))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            return Err(format!("{} --version failed: {}", cli.display(), stderr.trim()));
+        }
+        Ok(ClaudeCliCheck {
+            path: cli.display().to_string(),
+            version: String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Summarizes the unread mail from the last scrape with the Claude Code CLI (`claude -p`), so it

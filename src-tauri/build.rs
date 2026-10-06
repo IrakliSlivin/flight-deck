@@ -21,6 +21,7 @@ fn main() {
             "open_outlook",
             "refresh_outlook",
             "brief_outlook_inbox",
+            "check_claude_cli",
             "report_outlook_inbox",
             "quit_app",
             "get_reminder_settings",

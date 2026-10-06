@@ -27,6 +27,7 @@
     "allow-fetch-gitlab-prs",
     "allow-send-claude-message",
     "allow-brief-outlook-inbox",
+    "allow-check-claude-cli",
     "allow-compute-claude-usage",
     "allow-read-claude-rate-limits",
     "allow-fetch-ai-news",
