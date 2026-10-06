@@ -43,6 +43,10 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     await delay(1200);
     return data.mailBrief;
   },
+  check_claude_cli: ({ path }) => ({
+    path: (path as string | null) ?? "/home/demo/.local/bin/claude",
+    version: "2.1.291 (Claude Code)",
+  }),
 
   get_notification_feed: () => data.notificationFeed,
   dismiss_notification: ({ id }) => {

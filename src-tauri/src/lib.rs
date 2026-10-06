@@ -31,7 +31,10 @@ mod reminders;
 use reminders::{get_reminder_settings, set_reminder_settings};
 
 mod outlook;
-use outlook::{brief_outlook_inbox, get_outlook_inbox, open_outlook, refresh_outlook, report_outlook_inbox, OutlookState};
+use outlook::{
+    brief_outlook_inbox, check_claude_cli, get_outlook_inbox, open_outlook, refresh_outlook,
+    report_outlook_inbox, OutlookState,
+};
 
 const DB_URL: &str = "sqlite:dashboard.db";
 
@@ -160,6 +163,7 @@ pub fn run() {
             open_outlook,
             refresh_outlook,
             brief_outlook_inbox,
+            check_claude_cli,
             quit_app,
             get_reminder_settings,
             set_reminder_settings,

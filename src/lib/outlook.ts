@@ -84,3 +84,14 @@ export interface MailBrief {
 export function briefOutlookInbox(): Promise<MailBrief> {
   return invoke("brief_outlook_inbox");
 }
+
+export const CLAUDE_CLI_KEY = "claude.cli_path";
+
+export interface ClaudeCliCheck {
+  path: string;
+  version: string;
+}
+
+export function checkClaudeCli(path?: string): Promise<ClaudeCliCheck> {
+  return invoke("check_claude_cli", { path: path?.trim() || null });
+}
