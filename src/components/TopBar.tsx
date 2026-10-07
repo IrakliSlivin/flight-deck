@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { TABS, TabId } from "../tabs";
 import { hasCredential } from "../lib/credentials";
+import { useIdle } from "../lib/idle";
 import { REQUIRED_KEY } from "./SettingsDrawer";
 import { GearIcon } from "./Icons";
 import { NotificationBell } from "./NotificationBell";
@@ -17,6 +18,45 @@ function useLinkedCount(recheck: unknown): [number, number] {
   return [linked, keys.length];
 }
 
+/**
+ * Its own component, so the per-second tick re-renders only the clock, not the whole bar. While
+ * the window is idle (unfocused or hidden) it drops the seconds and ticks once a minute.
+ */
+function Clock() {
+  const idle = useIdle();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    let id = 0;
+    const tick = () => {
+      const d = new Date();
+      setNow(d);
+      // Wake on the next whole second or minute, so the display changes on time.
+      const ms = idle ? 60_000 - d.getSeconds() * 1000 - d.getMilliseconds() : 1000 - d.getMilliseconds();
+      id = window.setTimeout(tick, ms);
+    };
+    tick();
+    return () => clearTimeout(id);
+  }, [idle]);
+
+  return (
+    <div className="mr-2 flex flex-col items-end leading-tight">
+      <span className="font-mono text-sm tabular-nums text-slate-200">
+        {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        {!idle && (
+          <>
+            <span className="blink text-slate-400">:</span>
+            <span className="text-slate-400">{String(now.getSeconds()).padStart(2, "0")}</span>
+          </>
+        )}
+      </span>
+      <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
+        {now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
+      </span>
+    </div>
+  );
+}
+
 export function TopBar({
   active,
   onSelect,
@@ -30,14 +70,7 @@ export function TopBar({
   onOpenPalette: () => void;
   settingsOpen: boolean;
 }) {
-  const [now, setNow] = useState(new Date());
   const [linked, total] = useLinkedCount(settingsOpen);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1_000);
-    return () => clearInterval(id);
-  }, []);
-
   const allLinked = linked === total;
 
   return (
@@ -77,16 +110,7 @@ export function TopBar({
       </nav>
 
       <div className="flex shrink-0 items-center gap-2">
-        <div className="mr-2 flex flex-col items-end leading-tight">
-          <span className="font-mono text-sm tabular-nums text-slate-200">
-            {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            <span className="blink text-slate-400">:</span>
-            <span className="text-slate-400">{String(now.getSeconds()).padStart(2, "0")}</span>
-          </span>
-          <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-slate-500">
-            {now.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
-          </span>
-        </div>
+        <Clock />
         <button
           onClick={onOpenPalette}
           className="label rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-2 !text-[11px] text-slate-400 transition hover:text-slate-200"

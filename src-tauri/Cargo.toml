@@ -49,3 +49,7 @@ strip = true
 gtk = "0.18"
 # CloseNotification for "Clear notifications" (notifications.rs); already pulled in by notify-rust.
 zbus = "5"
+
+# Killing the mail brief's claude CLI process group on timeout (outlook.rs); already in the tree.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

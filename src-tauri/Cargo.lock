@@ -1389,6 +1389,7 @@ dependencies = [
  "futures",
  "gtk",
  "keyring",
+ "libc",
  "notify-rust",
  "reqwest",
  "rrule",

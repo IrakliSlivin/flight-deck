@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 // No Graph API (disabled by the org): Outlook Web runs in its own window with the user's normal
@@ -57,9 +58,20 @@ pub struct OutlookInbox {
 
 const WARM_UP_TIMEOUT_SECS: u64 = 90;
 
+// Outlook Web keeps growing over a long session: its web process starts around 600 MB, and by the
+// end of a day the app held ~2 GB, enough to push the machine into swap. WebKit's own memory
+// pressure handling doesn't get it back (it was firing all along), but closing the window ends that
+// process and frees all of it. So the hidden window is recreated every few hours.
+const RECYCLE_AFTER: Duration = Duration::from_secs(3 * 60 * 60);
+const RECYCLE_CHECK: Duration = Duration::from_secs(5 * 60);
+/// Only once it has been hidden this long, so it isn't pulled away from someone still using it.
+const RECYCLE_HIDDEN_FOR: Duration = Duration::from_secs(15 * 60);
+
 #[derive(Default)]
 pub struct OutlookState {
     inbox: Mutex<Option<OutlookInbox>>,
+    /// When the current window was created (see start_recycler).
+    created: Mutex<Option<Instant>>,
     /// The window is mapped but invisible, so Outlook renders its message list (see warm_up).
     warming: AtomicBool,
     /// Bumped per warm-up so a stale timeout doesn't end a newer one.
@@ -86,6 +98,7 @@ fn outlook_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String
         .initialization_script(SCRAPER)
         .build()
         .map_err(|e| e.to_string())?;
+    *app.state::<OutlookState>().created.lock().unwrap() = Some(Instant::now());
     let for_close = window.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -157,10 +170,52 @@ fn end_warm_up(app: &tauri::AppHandle, hide: bool) {
 }
 
 pub fn start_background(app: &tauri::AppHandle) {
+    open_hidden(app);
+    start_recycler(app);
+}
+
+fn open_hidden(app: &tauri::AppHandle) {
     match outlook_window(app) {
         Ok(window) => warm_up(app, &window),
         Err(e) => eprintln!("outlook window unavailable: {e}"),
     }
+}
+
+/// Recreates the hidden window once it is RECYCLE_AFTER old. Mail already announced stays in
+/// OutlookState, so the new window's first report doesn't notify again.
+fn start_recycler(app: &tauri::AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let mut last_visible = Instant::now();
+        loop {
+            std::thread::sleep(RECYCLE_CHECK);
+            let Some(window) = app.get_webview_window(LABEL) else { continue };
+            // Also true while warming up (shown, invisibly).
+            if window.is_visible().unwrap_or(true) {
+                last_visible = Instant::now();
+                continue;
+            }
+            let created = *app.state::<OutlookState>().created.lock().unwrap();
+            if created.is_some_and(|t| t.elapsed() >= RECYCLE_AFTER) && last_visible.elapsed() >= RECYCLE_HIDDEN_FOR {
+                recycle(&app, window);
+            }
+        }
+    });
+}
+
+fn recycle(app: &tauri::AppHandle, window: WebviewWindow) {
+    if let Err(e) = window.destroy() {
+        return eprintln!("outlook window not recycled: {e}");
+    }
+    drop(window);
+    // The destroy is carried out on the main thread; the label is free once it is gone.
+    for _ in 0..50 {
+        if app.get_webview_window(LABEL).is_none() {
+            return open_hidden(app);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    eprintln!("outlook window still open after destroy; not recreated");
 }
 
 // Commands here are async so they run off the main thread, which also handles the Outlook
@@ -333,7 +388,8 @@ pub async fn brief_outlook_inbox(state: tauri::State<'_, OutlookState>) -> Resul
     let output = tauri::async_runtime::spawn_blocking(move || {
         use std::io::Write;
         use std::process::{Command, Stdio};
-        let mut child = Command::new(claude_cli())
+        let mut command = Command::new(claude_cli());
+        command
             .args(["-p", "--output-format", "json", "--model", "sonnet"])
             .args(["--tools", "", "--strict-mcp-config", "--setting-sources", ""])
             .arg("--no-session-persistence")
@@ -341,16 +397,18 @@ pub async fn brief_outlook_inbox(state: tauri::State<'_, OutlookState>) -> Resul
             .current_dir(std::env::temp_dir())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Couldn't start the claude CLI: {e}"))?;
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(input.as_bytes())
-            .map_err(|e| e.to_string())?;
-        child.wait_with_output().map_err(|e| e.to_string())
+            .stderr(Stdio::piped());
+        // Its own process group, so a timeout also stops the real CLI behind a wrapper script
+        // (claude.cli_path can point at one).
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let mut child = command.spawn().map_err(|e| format!("Couldn't start the claude CLI: {e}"))?;
+        let written = child.stdin.take().unwrap().write_all(input.as_bytes());
+        if let Err(e) = written {
+            kill_tree(&mut child);
+            return Err(e.to_string());
+        }
+        wait_with_timeout(child, BRIEF_TIMEOUT)
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -365,6 +423,53 @@ pub async fn brief_outlook_inbox(state: tauri::State<'_, OutlookState>) -> Resul
     }
     serde_json::from_value(result["structured_output"].clone())
         .map_err(|e| format!("Unexpected brief from Claude: {e}"))
+}
+
+/// A brief normally takes well under a minute. Without a limit a hung CLI (network stall, expired
+/// login) would stay running, and every later brief would join the stuck one (mailBrief.ts).
+const BRIEF_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// `wait_with_output`, but the process is killed if it runs longer than `timeout`.
+fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> Result<std::process::Output, String> {
+    use std::io::Read;
+    // Both pipes are read while waiting, so a full pipe can't stall the CLI.
+    fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        })
+    }
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            kill_tree(&mut child);
+            return Err(format!("The claude CLI didn't answer within {}s and was stopped.", timeout.as_secs()));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    };
+    Ok(std::process::Output {
+        status,
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+    })
+}
+
+/// Kills the child's whole process group (see brief_outlook_inbox) and reaps it.
+fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL);
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn show(app: &tauri::AppHandle, window: &WebviewWindow) -> Result<(), String> {
@@ -519,5 +624,44 @@ mod tests {
         assert!(new_unread(&mut seen, &[msg("c", true)]).is_empty());
         // A new message that arrives already read doesn't notify.
         assert!(new_unread(&mut seen, &[msg("d", false)]).is_empty());
+    }
+
+    #[cfg(unix)]
+    fn spawn_grouped(script: &str) -> std::process::Child {
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+        Command::new("sh")
+            .args(["-c", script])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wait_with_timeout_returns_output() {
+        let out = wait_with_timeout(spawn_grouped("echo hi; echo err >&2"), Duration::from_secs(10)).unwrap();
+        assert!(out.status.success());
+        assert_eq!(out.stdout, b"hi\n");
+        assert_eq!(out.stderr, b"err\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wait_with_timeout_kills_the_whole_group() {
+        // Like a wrapper script: the shell waits on a child that does the work.
+        let child = spawn_grouped("sleep 30; true");
+        let pgid = child.id() as libc::pid_t;
+        let started = Instant::now();
+        assert!(wait_with_timeout(child, Duration::from_millis(500)).is_err());
+        assert!(started.elapsed() < Duration::from_secs(5));
+        // Nothing is left in the group once the orphaned `sleep` (killed too) has been reaped.
+        let gone = (0..50).any(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            (unsafe { libc::kill(-pgid, 0) }) == -1
+        });
+        assert!(gone, "process group {pgid} still has processes");
     }
 }
