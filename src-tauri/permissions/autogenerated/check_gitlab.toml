@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-check-gitlab"
+description = "Enables the check_gitlab command without any pre-configured scope."
+commands.allow = ["check_gitlab"]
+
+[[permission]]
+identifier = "deny-check-gitlab"
+description = "Denies the check_gitlab command without any pre-configured scope."
+commands.deny = ["check_gitlab"]

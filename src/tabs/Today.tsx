@@ -61,8 +61,8 @@ export function Today({ navigate, openSettings }: TabContext) {
   const [reviews, refreshReviewsRaw] = useRemote<number>(async () => {
     const { data: prs } = await loadPrs(reviewForce.current);
     reviewForce.current = true;
-    // PRs with 2+ approvals already have enough reviews to merge.
-    return prs.reviewing.filter((pr) => pr.approved_count < 2).length;
+    // PRs with 2+ approvals already have enough reviews to merge; drafts aren't ready yet.
+    return prs.reviewing.filter((pr) => !pr.draft && pr.approved_count < 2).length;
   });
   const [meetings, refreshMeetings] = useRemote<Meeting[]>(fetchMeetings);
   const [news, refreshNews] = useRemote<NewsFeed>(fetchAiNews);

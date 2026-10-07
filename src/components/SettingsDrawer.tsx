@@ -8,21 +8,31 @@ import {
   type ReminderSettings,
   type SoundId,
 } from "../lib/reminders";
+import { getCredential } from "../lib/credentials";
 import { CLAUDE_CLI_KEY, checkClaudeCli, type ClaudeCliCheck } from "../lib/outlook";
 import { CredentialField } from "./CredentialField";
 import { CloseIcon } from "./Icons";
+import { IntegrationSetup } from "./IntegrationSetup";
 
 interface FieldDef {
   key: string;
   label: string;
+  /** Non-secret fields are read back into the form; secrets never are. */
   secret?: boolean;
+  optional?: boolean;
+  placeholder?: string;
+  /** Hides the field behind a link with this text until it's clicked (or has a value). */
+  advanced?: string;
 }
 
 export interface IntegrationDef {
   id: string;
   name: string;
   description: string;
+  /** What you type. Everything else is picked after "Save & connect" succeeds. */
   fields: FieldDef[];
+  /** Settings saved by the pickers, cleared on Disconnect too. */
+  settingKeys?: string[];
   helpUrl?: string;
   instructions?: string[];
 }
@@ -32,70 +42,57 @@ export const INTEGRATIONS: IntegrationDef[] = [
     id: "clickup",
     name: "ClickUp",
     description: "Powers the sprint tasks widget on Today.",
-    fields: [
-      { key: "clickup.api_token", label: "API Token" },
-      {
-        key: "clickup.space_name",
-        label: "Space/Folder/List URL (optional)",
-        secret: false,
-      },
+    fields: [{ key: "clickup.api_token", label: "API token", placeholder: "pk_…" }],
+    settingKeys: ["clickup.space_name"],
+    helpUrl: "https://app.clickup.com/settings/apps",
+    instructions: [
+      'Open the link below (ClickUp → Settings → Apps) and click "Generate" under API Token.',
+      "Paste it below and press Save & connect. You can then narrow the tasks to one space, folder or list.",
     ],
   },
   {
     id: "bitbucket",
     name: "Bitbucket",
-    description:
-      "Powers the PRs tab. Token scopes needed: read:pullrequest:bitbucket, read:user:bitbucket, read:repository:bitbucket.",
+    description: "Pull requests in the PRs tab.",
     fields: [
-      { key: "bitbucket.email", label: "Atlassian Email", secret: false },
-      { key: "bitbucket.api_token", label: "API Token" },
-      {
-        key: "bitbucket.workspace",
-        label: "Workspace(s) (comma-separated)",
-        secret: false,
-      },
-      {
-        key: "bitbucket.repos",
-        label: "Repos to watch (optional — blank scans all repos in the workspace)",
-        secret: false,
-      },
+      { key: "bitbucket.email", label: "Atlassian email", secret: false, placeholder: "you@company.com" },
+      { key: "bitbucket.api_token", label: "API token" },
     ],
+    settingKeys: ["bitbucket.workspace", "bitbucket.repos"],
     helpUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
     instructions: [
-      'Open the link below, then click "Create API token with scopes" (not the plain "Create API token" button — that one has no scopes and won\'t work here).',
-      'In the App dropdown, select "Bitbucket" explicitly. Skipping this is the most common mistake — no scope checkboxes for Bitbucket will appear until you do.',
-      "Check these three scopes: read:pullrequest:bitbucket, read:user:bitbucket, and read:repository:bitbucket (the last one lets repos be auto-discovered so you don't have to list them).",
-      "Create the token and copy it immediately — it's shown only once. Tokens can't be edited after creation, so if you already made one without this scope, make a new one.",
-      "Enter the email you use to log into Bitbucket, the token, and your workspace slug(s) below (e.g. acme — the part right after bitbucket.org/ in your repo URLs). Listing the workspace directly avoids needing yet another scope just to look up which workspaces you belong to.",
-      'Bitbucket no longer has an API for "PRs awaiting my review" across all repos — leave "Repos to watch" blank to scan every repo in the workspace, or list specific slugs (e.g. evex_billing) to narrow it down.',
+      'Open the link below and click "Create API token with scopes" (not the plain "Create API token" — that one has no scopes).',
+      'Pick "Bitbucket" in the App dropdown; the scope checkboxes only appear after that.',
+      "Check read:pullrequest:bitbucket, read:user:bitbucket, read:repository:bitbucket and read:workspace:bitbucket (the last one lets you pick your workspace from a list).",
+      "Copy the token (it's shown only once), enter it with the email you log into Bitbucket with, and press Save & connect.",
     ],
   },
   {
     id: "gitlab",
     name: "GitLab",
-    description:
-      "Merge requests in the PRs tab, next to Bitbucket. Token scope needed: read_api.",
+    description: "Merge requests in the PRs tab, next to Bitbucket.",
     fields: [
-      { key: "gitlab.api_token", label: "Personal Access Token" },
+      { key: "gitlab.api_token", label: "Access token", placeholder: "glpat-…" },
       {
         key: "gitlab.base_url",
-        label: "GitLab URL (optional — blank means https://gitlab.com)",
+        label: "GitLab URL",
         secret: false,
+        optional: true,
+        placeholder: "https://gitlab.example.com",
+        advanced: "Self-hosted GitLab?",
       },
     ],
     helpUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",
     instructions: [
-      'Open the link below (on a self-hosted GitLab: avatar → Edit profile → Access tokens) and click "Add new token".',
-      'Name it, pick an expiry date, and check only the "read_api" scope.',
-      "Create the token, copy it (it's shown only once) and paste it below.",
-      'If your GitLab is self-hosted, enter its address (e.g. https://gitlab.example.com). "Needs your review" lists open MRs where you are a reviewer and haven\'t approved yet.',
+      'Open the link below (self-hosted: avatar → Edit profile → Access tokens) and click "Add new token".',
+      'Check only the "read_api" scope, create it, and paste it below.',
     ],
   },
   {
     id: "outlook-calendar",
     name: "Outlook Calendar",
-    description: "Powers Meetings on Today, via your published calendar link (no app registration needed).",
-    fields: [{ key: "outlook.calendar_ics_url", label: "Published calendar ICS link" }],
+    description: "Meetings on Today, via your published calendar link (no app registration needed).",
+    fields: [{ key: "outlook.calendar_ics_url", label: "ICS link", placeholder: "https://outlook.office365.com/…/calendar.ics" }],
     instructions: [
       "In Outlook on the web: Settings → Calendar → Shared calendars → Publish a calendar.",
       'Pick your calendar, choose "Can view all details", and click Publish.',
@@ -247,10 +244,18 @@ function NotificationsSection() {
   );
 }
 
+/** Just a Check button; the command/path field appears when the check fails or one is saved. */
 function ClaudeCliSection() {
   const [check, setCheck] = useState<ClaudeCliCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [custom, setCustom] = useState(false);
+
+  useEffect(() => {
+    getCredential(CLAUDE_CLI_KEY)
+      .then((v) => setCustom(!!v))
+      .catch(() => {});
+  }, []);
 
   async function test() {
     setBusy(true);
@@ -270,36 +275,42 @@ function ClaudeCliSection() {
       className="rise flex flex-col gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4"
       style={{ animationDelay: "115ms" }}
     >
-      <div>
-        <h3 className="text-sm font-semibold text-slate-100">Claude CLI</h3>
-        <p className="text-xs text-slate-400">
-          Runs the AI mail brief on your Claude Code login. Leave blank for <code>claude</code>.
-        </p>
-      </div>
-      <CredentialField
-        fieldKey={CLAUDE_CLI_KEY}
-        label="Command or path"
-        secret={false}
-      />
-      <p className="text-xs text-slate-500">
-        A full path (<code>~/.local/bin/claude-work</code>) or a name on PATH. Shell aliases don't
-        work here — point at the script the alias runs. Save, then Check.
-      </p>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-slate-100">Claude CLI</h3>
+          <p className="text-xs text-slate-400">Runs the AI mail brief on your Claude Code login.</p>
+        </div>
         <button
           onClick={test}
           disabled={busy}
-          className="label rounded-lg border border-white/10 px-3 py-1.5 !text-[11px] text-slate-300 transition hover:text-white disabled:opacity-40"
+          className="label shrink-0 rounded-lg border border-white/10 px-3 py-1.5 !text-[11px] text-slate-300 transition hover:text-white disabled:opacity-40"
         >
           {busy ? "Checking…" : "Check"}
         </button>
-        {check && (
-          <span className="min-w-0 truncate text-xs text-emerald-300">
-            {check.version} — {check.path}
-          </span>
-        )}
       </div>
+      {check && (
+        <p className="truncate text-xs text-emerald-300" title={check.path}>
+          ✓ {check.version} — {check.path}
+        </p>
+      )}
       {error && <p className="text-xs text-rose-400">{error}</p>}
+      {(error || custom) && (
+        <>
+          <CredentialField
+            fieldKey={CLAUDE_CLI_KEY}
+            label="Command or path"
+            secret={false}
+            onSaved={(v) => {
+              setCustom(!!v);
+              test();
+            }}
+          />
+          <p className="text-xs text-slate-500">
+            A full path (<code>~/.local/bin/claude-work</code>) or a name on PATH; blank means{" "}
+            <code>claude</code>. Shell aliases don't work here — point at the script the alias runs.
+          </p>
+        </>
+      )}
     </section>
   );
 }
@@ -374,16 +385,7 @@ export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () =
                 </details>
               )}
 
-              <div className="flex flex-col gap-2">
-                {integration.fields.map((field) => (
-                  <CredentialField
-                    key={field.key}
-                    fieldKey={field.key}
-                    label={field.label}
-                    secret={field.secret}
-                  />
-                ))}
-              </div>
+              <IntegrationSetup integration={integration} requiredKey={REQUIRED_KEY[integration.id]} />
             </section>
           ))}
           <p className="font-mono text-[12px] text-slate-500">

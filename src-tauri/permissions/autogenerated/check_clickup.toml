@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-check-clickup"
+description = "Enables the check_clickup command without any pre-configured scope."
+commands.allow = ["check_clickup"]
+
+[[permission]]
+identifier = "deny-check-clickup"
+description = "Denies the check_clickup command without any pre-configured scope."
+commands.deny = ["check_clickup"]

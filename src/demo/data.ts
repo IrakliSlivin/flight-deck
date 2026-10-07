@@ -24,6 +24,24 @@ export const credentials: Record<string, string> = {
   "outlook.calendar_ics_url": "demo",
 };
 
+export const clickupSetup = {
+  user: "ada",
+  locations: [
+    { value: "space:9001", name: "Engineering", kind: "space", path: [] },
+    { value: "folder:9101", name: "Sprints", kind: "folder", path: ["Engineering"] },
+    { value: "list:9201", name: "Sprint 42", kind: "list", path: ["Engineering", "Sprints"] },
+    { value: "list:9202", name: "Sprint 43", kind: "list", path: ["Engineering", "Sprints"] },
+    { value: "list:9203", name: "Bugs", kind: "list", path: ["Engineering"] },
+    { value: "space:9002", name: "Product", kind: "space", path: [] },
+    { value: "list:9204", name: "Roadmap", kind: "list", path: ["Product"] },
+  ],
+};
+
+export const bitbucketRepos: Record<string, string[]> = {
+  acme: ["api-gateway", "billing", "design-system", "infra", "mobile-app", "web-app"],
+  "acme-labs": ["experiments", "ml-pipeline"],
+};
+
 export const rateLimits: RateLimitSnapshot = {
   rate_limits: {
     five_hour: { used_percentage: 38, resets_at: sec(2 * HOUR + 14 * MIN) },

@@ -444,6 +444,13 @@ export function PRs() {
                     prs: reviewing.filter((pr) => statusOf(pr) === "approved"),
                     quiet: true,
                   },
+                  {
+                    key: "drafts",
+                    label: "Drafts · not ready for review yet",
+                    color: STATUS_META.draft.ring,
+                    prs: reviewing.filter((pr) => statusOf(pr) === "draft"),
+                    quiet: true,
+                  },
                 ]}
                 empty="Nothing waiting on you."
                 delay={260}

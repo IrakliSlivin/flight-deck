@@ -205,12 +205,12 @@ service.
 
 | Integration | What you need |
 |---|---|
-| **ClickUp** | A personal API token (ClickUp → Settings → Apps → API Token). Optionally a Space, Folder or List URL to narrow the tasks. |
-| **Bitbucket** | An [Atlassian API token with scopes](https://id.atlassian.com/manage-profile/security/api-tokens): choose **"Create API token with scopes"**, pick the **Bitbucket** app, and check `read:pullrequest:bitbucket`, `read:user:bitbucket` and `read:repository:bitbucket`. Also your Atlassian email and workspace slug(s). |
-| **GitLab** | A [personal access token](https://gitlab.com/-/user_settings/personal_access_tokens) with the `read_api` scope. Set the GitLab URL if it's self-hosted. |
+| **ClickUp** | A personal API token (ClickUp → Settings → Apps → API Token). After it connects you can pick a space, folder or list to narrow the tasks. |
+| **Bitbucket** | Your Atlassian email and an [Atlassian API token with scopes](https://id.atlassian.com/manage-profile/security/api-tokens): choose **"Create API token with scopes"**, pick the **Bitbucket** app, and check `read:pullrequest:bitbucket`, `read:user:bitbucket`, `read:repository:bitbucket` and `read:workspace:bitbucket`. After it connects you pick the workspace and repos from lists (without `read:workspace` you type the workspace slug). |
+| **GitLab** | A [personal access token](https://gitlab.com/-/user_settings/personal_access_tokens) with the `read_api` scope. Set the GitLab URL (under "Self-hosted GitLab?") if it's self-hosted. |
 | **Outlook Calendar** | A published ICS link: Outlook on the web → Settings → Calendar → Shared calendars → Publish a calendar → "Can view all details" → copy the **ICS** link. |
 
-The Settings drawer shows these steps next to each integration.
+The Settings drawer shows these steps next to each integration. **Save & connect** checks the credentials right away and shows who you're connected as.
 
 ### Optional extras
 

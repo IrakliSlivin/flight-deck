@@ -109,10 +109,6 @@ struct BbUserResponse {
 }
 
 #[derive(Deserialize)]
-struct WorkspacesResponse {
-    values: Vec<WorkspaceObj>,
-}
-#[derive(Deserialize)]
 struct WorkspaceObj {
     slug: String,
 }
@@ -216,7 +212,8 @@ fn awaiting_my_review(p: &RawPr, my_uuid: &str) -> bool {
     if p.author.uuid.as_deref() == Some(my_uuid) {
         return false;
     }
-    if p.draft || i_approved(p, my_uuid) {
+    // Drafts are kept; the PRs tab shows them in their own quiet group.
+    if i_approved(p, my_uuid) {
         return false;
     }
 
@@ -309,7 +306,7 @@ fn save_repo_cache(app: &tauri::AppHandle, cache: &RepoCacheFile) {
 // --- Account cache (uuid + auto-discovered workspaces; refreshed at most
 // once every 24h, and invalidated automatically if the configured email
 // changes). Your uuid never changes and workspace membership rarely does,
-// so there's no reason to hit /2.0/user or /2.0/workspaces every refresh.
+// so there's no reason to hit /2.0/user or /2.0/user/workspaces every refresh.
 
 #[derive(Serialize, Deserialize)]
 struct AccountCache {
@@ -341,7 +338,7 @@ fn save_account_cache(app: &tauri::AppHandle, cache: &AccountCache) {
 
 /// Returns (uuid, auto-discovered workspaces) from cache if fresh (<24h) and
 /// still matching the configured email, otherwise fetches `/2.0/user` and,
-/// if workspaces aren't explicitly configured, `/2.0/workspaces` too.
+/// if workspaces aren't explicitly configured, `/2.0/user/workspaces` too.
 async fn get_account_info(
     app: &tauri::AppHandle,
     client: &reqwest::Client,
@@ -349,8 +346,14 @@ async fn get_account_info(
     token: &str,
 ) -> Result<(String, Option<Vec<String>>), String> {
     let now = now_secs();
+    let discover = get_optional_secret("bitbucket.workspace")
+        .filter(|s| !s.trim().is_empty())
+        .is_none();
     if let Some(cache) = load_account_cache(app) {
-        if cache.email == email && now.saturating_sub(cache.fetched_at_secs) < REPO_CACHE_TTL_SECS
+        // A cache written while a workspace was configured has no discovered list.
+        if cache.email == email
+            && now.saturating_sub(cache.fetched_at_secs) < REPO_CACHE_TTL_SECS
+            && (!discover || cache.workspaces.is_some())
         {
             return Ok((cache.uuid, cache.workspaces));
         }
@@ -358,18 +361,15 @@ async fn get_account_info(
 
     let user: BbUserResponse = get_json(client, "https://api.bitbucket.org/2.0/user", email, token).await?;
 
-    let workspaces = if get_optional_secret("bitbucket.workspace")
-        .filter(|s| !s.trim().is_empty())
-        .is_none()
-    {
-        let resp: WorkspacesResponse = get_json(
+    let workspaces = if discover {
+        let resp: UserWorkspacesResponse = get_json(
             client,
-            "https://api.bitbucket.org/2.0/workspaces?pagelen=100",
+            "https://api.bitbucket.org/2.0/user/workspaces?pagelen=100",
             email,
             token,
         )
         .await?;
-        Some(resp.values.into_iter().map(|w| w.slug).collect())
+        Some(resp.values.into_iter().map(|v| v.workspace.slug).collect())
     } else {
         None
     };
@@ -537,4 +537,94 @@ pub async fn fetch_bitbucket_prs(app: tauri::AppHandle) -> Result<BitbucketPrs, 
         authored,
         reviewing,
     })
+}
+
+// --- Settings: "Save & connect" checks the email + token and lists the
+// workspaces and repos, so they're picked instead of typed.
+
+#[derive(Debug, Serialize)]
+pub struct BitbucketSetup {
+    pub user: String,
+    /// None when the token lacks `read:workspace:bitbucket`; the slug is typed then.
+    pub workspaces: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+struct BbNamedUser {
+    display_name: String,
+}
+
+#[derive(Deserialize)]
+struct UserWorkspacesResponse {
+    values: Vec<UserWorkspaceAccess>,
+    next: Option<String>,
+}
+#[derive(Deserialize)]
+struct UserWorkspaceAccess {
+    workspace: WorkspaceObj,
+}
+
+#[tauri::command]
+pub async fn check_bitbucket() -> Result<BitbucketSetup, String> {
+    let (email, token) = get_creds()?;
+    let client = new_client();
+    let user: BbNamedUser = get_json(&client, "https://api.bitbucket.org/2.0/user", &email, &token)
+        .await
+        .map_err(|e| {
+            if e.contains("(401") {
+                "Bitbucket rejected the email + token. Check the email is the one you log in with, and that the token was made with \"Create API token with scopes\".".to_string()
+            } else {
+                e
+            }
+        })?;
+
+    let mut workspaces = Some(Vec::new());
+    let mut next = Some("https://api.bitbucket.org/2.0/user/workspaces?pagelen=100".to_string());
+    while let Some(url) = next.take() {
+        match get_json::<UserWorkspacesResponse>(&client, &url, &email, &token).await {
+            Ok(page) => {
+                if let Some(list) = workspaces.as_mut() {
+                    list.extend(page.values.into_iter().map(|v| v.workspace.slug));
+                }
+                next = page.next;
+            }
+            Err(_) => workspaces = None,
+        }
+    }
+    if let Some(list) = workspaces.as_mut() {
+        list.sort();
+        list.dedup();
+    }
+
+    Ok(BitbucketSetup { user: user.display_name, workspaces })
+}
+
+/// Every repo slug in a workspace (active or not), sorted, for the "Repos to watch" picker.
+#[tauri::command]
+pub async fn list_bitbucket_repos(workspace: String) -> Result<Vec<String>, String> {
+    let (email, token) = get_creds()?;
+    let client = new_client();
+    let workspace = workspace.trim();
+    let mut slugs = Vec::new();
+    let mut next = Some(format!(
+        "https://api.bitbucket.org/2.0/repositories/{workspace}?pagelen=100&fields=values.slug,next"
+    ));
+    let mut pages = 0;
+    while let Some(url) = next {
+        pages += 1;
+        if pages > 20 {
+            break;
+        }
+        let parsed: RepositoriesResponse = get_json(&client, &url, &email, &token).await.map_err(|e| {
+            if e.contains("(404") {
+                format!("No Bitbucket workspace called '{workspace}' (use the slug from bitbucket.org/<slug>/…).")
+            } else {
+                e
+            }
+        })?;
+        slugs.extend(parsed.values.into_iter().map(|r| r.slug));
+        next = parsed.next;
+    }
+    slugs.sort();
+    Ok(slugs)
 }

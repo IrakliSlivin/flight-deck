@@ -10,10 +10,13 @@ export function CredentialField({
   fieldKey,
   label,
   secret = true,
+  onSaved,
 }: {
   fieldKey: string;
   label: string;
   secret?: boolean;
+  /** Called with the new value after Save, or "" after Clear. */
+  onSaved?: (value: string) => void;
 }) {
   const [value, setValue] = useState("");
   const [saved, setSaved] = useState<boolean | null>(null);
@@ -39,6 +42,7 @@ export function CredentialField({
     setBusy(true);
     try {
       await saveCredential(fieldKey, value);
+      onSaved?.(value);
       if (secret) setValue("");
       setSaved(true);
     } finally {
@@ -50,6 +54,7 @@ export function CredentialField({
     setBusy(true);
     try {
       await deleteCredential(fieldKey);
+      onSaved?.("");
       setValue("");
       setSaved(false);
     } finally {
@@ -59,7 +64,7 @@ export function CredentialField({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="w-40 shrink-0 text-xs text-slate-400">{label}</span>
+      {label && <span className="w-40 shrink-0 text-xs text-slate-400">{label}</span>}
       <input
         type={secret ? "password" : "text"}
         value={value}

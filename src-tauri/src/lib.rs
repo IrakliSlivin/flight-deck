@@ -7,13 +7,13 @@ mod credentials;
 use credentials::{delete_credential, get_credential, has_credential, save_credential};
 
 mod clickup;
-use clickup::{fetch_clickup_list_statuses, fetch_clickup_tasks, update_clickup_task_status};
+use clickup::{check_clickup, fetch_clickup_list_statuses, fetch_clickup_tasks, update_clickup_task_status};
 
 mod bitbucket;
-use bitbucket::fetch_bitbucket_prs;
+use bitbucket::{check_bitbucket, fetch_bitbucket_prs, list_bitbucket_repos};
 
 mod gitlab;
-use gitlab::fetch_gitlab_prs;
+use gitlab::{check_gitlab, fetch_gitlab_prs};
 
 mod claude;
 use claude::send_claude_message;
@@ -151,8 +151,12 @@ pub fn run() {
             fetch_clickup_tasks,
             fetch_clickup_list_statuses,
             update_clickup_task_status,
+            check_clickup,
             fetch_bitbucket_prs,
+            check_bitbucket,
+            list_bitbucket_repos,
             fetch_gitlab_prs,
+            check_gitlab,
             send_claude_message,
             compute_claude_usage,
             read_claude_rate_limits,

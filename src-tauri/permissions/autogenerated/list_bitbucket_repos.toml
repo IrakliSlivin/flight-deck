@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-bitbucket-repos"
+description = "Enables the list_bitbucket_repos command without any pre-configured scope."
+commands.allow = ["list_bitbucket_repos"]
+
+[[permission]]
+identifier = "deny-list-bitbucket-repos"
+description = "Denies the list_bitbucket_repos command without any pre-configured scope."
+commands.deny = ["list_bitbucket_repos"]

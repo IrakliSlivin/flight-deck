@@ -5,3 +5,8 @@ import type { BitbucketPrs } from "./bitbucket";
 export function fetchGitlabPrs(): Promise<BitbucketPrs> {
   return invoke("fetch_gitlab_prs");
 }
+
+/** Checks the saved token; returns e.g. "@ada on gitlab.com". */
+export function checkGitlab(): Promise<string> {
+  return invoke("check_gitlab");
+}

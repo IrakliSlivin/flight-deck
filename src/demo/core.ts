@@ -28,8 +28,12 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     if (task) task.status = status as string;
   },
 
+  check_clickup: () => data.clickupSetup,
   fetch_bitbucket_prs: () => data.bitbucketPrs,
+  check_bitbucket: () => ({ user: "Ada Lovelace", workspaces: ["acme", "acme-labs"] }),
+  list_bitbucket_repos: ({ workspace }) => data.bitbucketRepos[workspace as string] ?? [],
   fetch_gitlab_prs: () => data.gitlabPrs,
+  check_gitlab: () => "@ada on gitlab.com",
   fetch_meetings: () => data.meetings,
   fetch_ai_news: () => data.newsFeed,
 

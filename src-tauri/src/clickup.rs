@@ -113,6 +113,16 @@ fn extract_candidate_ids(raw: &str) -> Vec<String> {
     ids
 }
 
+/// A location chosen in the Settings picker (`space:<id>`, `folder:<id>`,
+/// `list:<id>`), which needs no lookup. Pasted URLs and names return None.
+fn parse_picked_location(raw: &str) -> Option<ContainerFilter> {
+    let (kind, id) = raw.split_once(':')?;
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    ContainerFilter::from_kind_id(kind, id.to_string())
+}
+
 /// Asks the ClickUp API directly whether an id is a Space, Folder, or List,
 /// rather than guessing from URL syntax (which varies across ClickUp's view types).
 async fn resolve_container_id(
@@ -276,8 +286,8 @@ async fn get_account_info(
         get_json(client, "https://api.clickup.com/api/v2/team", token).await?;
     let team_ids: Vec<String> = teams.teams.into_iter().map(|t| t.id).collect();
 
-    let mut container_filter = None;
-    for candidate in candidate_ids {
+    let mut container_filter = raw_filter.as_deref().and_then(parse_picked_location);
+    for candidate in candidate_ids.iter().filter(|_| container_filter.is_none()) {
         if let Some(cf) = resolve_container_id(client, token, candidate).await {
             container_filter = Some(cf);
             break;
@@ -498,4 +508,152 @@ pub async fn update_clickup_task_status(
     }
     let body = resp.text().await.unwrap_or_default();
     Err(format!("ClickUp API error ({code}): {body}"))
+}
+
+// --- Settings: "Save & connect" checks the token and lists where tasks can be
+// narrowed to, so the location is picked rather than pasted as a URL.
+
+#[derive(Debug, Serialize)]
+pub struct ClickupLocation {
+    /// Stored in `clickup.space_name` as-is: `space:<id>`, `folder:<id>` or `list:<id>`.
+    pub value: String,
+    pub name: String,
+    pub kind: String,
+    /// Parent names (workspace when there are several, space, folder), for the picker label.
+    pub path: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClickupSetup {
+    pub user: String,
+    pub locations: Vec<ClickupLocation>,
+}
+
+#[derive(Deserialize)]
+struct NamedUserResponse {
+    user: NamedUser,
+}
+#[derive(Deserialize)]
+struct NamedUser {
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NamedTeamsResponse {
+    teams: Vec<NamedObj>,
+}
+#[derive(Deserialize)]
+struct NamedObj {
+    id: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct FoldersResponse {
+    folders: Vec<FolderObj>,
+}
+#[derive(Deserialize)]
+struct FolderObj {
+    id: String,
+    name: String,
+    #[serde(default)]
+    lists: Vec<NamedObj>,
+}
+
+#[derive(Deserialize)]
+struct ListsResponse {
+    lists: Vec<NamedObj>,
+}
+
+/// One space's folders, their lists, and its folderless lists. A failing
+/// request leaves that part out rather than failing the whole picker.
+async fn space_locations(
+    client: &reqwest::Client,
+    token: &str,
+    space: NamedObj,
+    prefix: Vec<String>,
+) -> Vec<ClickupLocation> {
+    let folders_url = format!("https://api.clickup.com/api/v2/space/{}/folder?archived=false", space.id);
+    let lists_url = format!("https://api.clickup.com/api/v2/space/{}/list?archived=false", space.id);
+    let (folders, lists) = futures::join!(
+        get_json::<FoldersResponse>(client, &folders_url, token),
+        get_json::<ListsResponse>(client, &lists_url, token),
+    );
+
+    let mut out = vec![ClickupLocation {
+        value: format!("space:{}", space.id),
+        name: space.name.clone(),
+        kind: "space".into(),
+        path: prefix.clone(),
+    }];
+    let mut in_space = prefix;
+    in_space.push(space.name);
+    for folder in folders.map(|f| f.folders).unwrap_or_default() {
+        out.push(ClickupLocation {
+            value: format!("folder:{}", folder.id),
+            name: folder.name.clone(),
+            kind: "folder".into(),
+            path: in_space.clone(),
+        });
+        let mut in_folder = in_space.clone();
+        in_folder.push(folder.name);
+        for list in folder.lists {
+            out.push(ClickupLocation {
+                value: format!("list:{}", list.id),
+                name: list.name,
+                kind: "list".into(),
+                path: in_folder.clone(),
+            });
+        }
+    }
+    for list in lists.map(|l| l.lists).unwrap_or_default() {
+        out.push(ClickupLocation {
+            value: format!("list:{}", list.id),
+            name: list.name,
+            kind: "list".into(),
+            path: in_space.clone(),
+        });
+    }
+    out
+}
+
+#[tauri::command]
+pub async fn check_clickup() -> Result<ClickupSetup, String> {
+    let token = get_token()?;
+    let client = reqwest::Client::new();
+    let user: NamedUserResponse =
+        get_json(&client, "https://api.clickup.com/api/v2/user", &token).await?;
+    let teams: NamedTeamsResponse =
+        get_json(&client, "https://api.clickup.com/api/v2/team", &token).await?;
+    let many_teams = teams.teams.len() > 1;
+
+    let mut spaces = Vec::new();
+    for team in teams.teams {
+        let url = format!("https://api.clickup.com/api/v2/team/{}/space?archived=false", team.id);
+        let resp: NamedSpacesResponse = get_json(&client, &url, &token).await?;
+        let prefix = if many_teams { vec![team.name.clone()] } else { Vec::new() };
+        spaces.extend(resp.spaces.into_iter().map(|s| (s, prefix.clone())));
+    }
+    let locations = futures::future::join_all(
+        spaces
+            .into_iter()
+            .map(|(space, prefix)| space_locations(&client, &token, space, prefix)),
+    )
+    .await
+    .into_iter()
+    .flatten()
+    .collect();
+
+    Ok(ClickupSetup {
+        user: user.user.username.or(user.user.email).unwrap_or_default(),
+        locations,
+    })
+}
+
+#[derive(Deserialize)]
+struct NamedSpacesResponse {
+    spaces: Vec<NamedObj>,
 }

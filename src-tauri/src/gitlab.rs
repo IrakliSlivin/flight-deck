@@ -255,16 +255,22 @@ pub async fn fetch_gitlab_prs(app: tauri::AppHandle) -> Result<GitlabMrs, String
     let my_id = my_user_id(&app, &client, &base, &token).await?;
 
     let reviewer_filter = format!("scope=all&reviewer_id={my_id}");
-    let (authored, reviewing) = futures::try_join!(
+    let assignee_filter = format!("scope=all&assignee_id={my_id}");
+    let (authored, as_reviewer, as_assignee) = futures::try_join!(
         list_mrs(&client, &base, &token, "scope=created_by_me"),
         list_mrs(&client, &base, &token, &reviewer_filter),
+        list_mrs(&client, &base, &token, &assignee_filter),
     )?;
 
-    // "Awaiting your review": you're a listed reviewer, it isn't yours or a
-    // draft, and you haven't approved it yet.
-    let reviewing: Vec<RawMr> = reviewing
+    // "Awaiting your review": you're a listed reviewer or the assignee, it
+    // isn't yours, and you haven't approved it yet. Drafts are kept; the PRs
+    // tab shows them in their own quiet group.
+    let mut seen = std::collections::HashSet::new();
+    let reviewing: Vec<RawMr> = as_reviewer
         .into_iter()
-        .filter(|mr| mr.author.id != my_id && !mr.draft)
+        .chain(as_assignee)
+        .filter(|mr| mr.author.id != my_id)
+        .filter(|mr| seen.insert((mr.project_id, mr.iid)))
         .collect();
 
     let (authored, reviewing) = futures::join!(
@@ -273,4 +279,22 @@ pub async fn fetch_gitlab_prs(app: tauri::AppHandle) -> Result<GitlabMrs, String
     );
 
     Ok(GitlabMrs { authored, reviewing })
+}
+
+#[derive(Deserialize)]
+struct GlNamedUser {
+    username: String,
+}
+
+/// Settings' "Save & connect": confirms the token works and says who it belongs to.
+#[tauri::command]
+pub async fn check_gitlab() -> Result<String, String> {
+    let token = get_token()?;
+    let base = api_base();
+    let me: GlNamedUser = get_json(&new_client(), &format!("{base}/user"), &token).await?;
+    let host = base
+        .trim_end_matches("/api/v4")
+        .trim_start_matches("https://")
+        .trim_start_matches("http://");
+    Ok(format!("@{} on {host}", me.username))
 }
