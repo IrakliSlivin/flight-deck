@@ -331,9 +331,7 @@ function DecisionCard({ saved, stale, busy }: { saved: SavedReview; stale: boole
       {error && <p className="mt-1.5 whitespace-pre-line text-xs text-rose-300">{error}</p>}
       {stale && (
         <p className="mt-1.5 text-xs text-amber-200">
-          {gitlab
-            ? "New commits since this review: GitLab will refuse an approval until you re-review."
-            : "New commits since this review: approving now also approves code Claude hasn't seen."}
+          New commits since this review: approving now also approves code Claude hasn't seen.
         </p>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">

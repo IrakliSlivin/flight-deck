@@ -29,6 +29,9 @@ the main target (tested on GNOME).
   picker), a local todo list and AI headlines.
 - **Pull Requests**: Bitbucket PRs and GitLab merge requests you authored or
   need to review, in one list.
+- **Claude PR reviews**: Claude reviews a PR's diff (any language) and shows
+  findings on the changed lines, with suggested fixes. You can post a finding
+  as a comment, and approve, request changes or comment, without leaving the app.
 - **AI News**: a feed of AI blogs and news sites.
 - **Meeting reminders**: native notifications a configurable number of minutes
   before each meeting, with a Join button.
@@ -206,8 +209,8 @@ service.
 | Integration | What you need |
 |---|---|
 | **ClickUp** | A personal API token (ClickUp → Settings → Apps → API Token). After it connects you can pick a space, folder or list to narrow the tasks. |
-| **Bitbucket** | Your Atlassian email and an [Atlassian API token with scopes](https://id.atlassian.com/manage-profile/security/api-tokens): choose **"Create API token with scopes"**, pick the **Bitbucket** app, and check `read:pullrequest:bitbucket`, `read:user:bitbucket`, `read:repository:bitbucket` and `read:workspace:bitbucket`. After it connects you pick the workspace and repos from lists (without `read:workspace` you type the workspace slug). |
-| **GitLab** | A [personal access token](https://gitlab.com/-/user_settings/personal_access_tokens) with the `read_api` scope. Set the GitLab URL (under "Self-hosted GitLab?") if it's self-hosted. |
+| **Bitbucket** | Your Atlassian email and an [Atlassian API token with scopes](https://id.atlassian.com/manage-profile/security/api-tokens): choose **"Create API token with scopes"**, pick the **Bitbucket** app, and check `read:pullrequest:bitbucket`, `read:user:bitbucket`, `read:repository:bitbucket` and `read:workspace:bitbucket`. After it connects you pick the workspace and repos from lists (without `read:workspace` you type the workspace slug). To comment, approve or request changes from a PR review, also check `write:pullrequest:bitbucket`. |
+| **GitLab** | A [personal access token](https://gitlab.com/-/user_settings/personal_access_tokens) with the `read_api` scope, or `api` instead if you want to comment and approve from a PR review (`read_api` can't write). Set the GitLab URL (under "Self-hosted GitLab?") if it's self-hosted. |
 | **Outlook Calendar** | A published ICS link: Outlook on the web → Settings → Calendar → Shared calendars → Publish a calendar → "Can view all details" → copy the **ICS** link. |
 
 The Settings drawer shows these steps next to each integration. **Save & connect** checks the credentials right away and shows who you're connected as.
@@ -219,9 +222,11 @@ The Settings drawer shows these steps next to each integration. **Save & connect
   on the Mail brief card, sign in once and leave it on the Inbox (`Ctrl+W`
   hides it again). It reads your inbox page, so a
   big change to Outlook's web markup can break it.
-- **AI mail brief**: needs [Claude Code](https://claude.com/claude-code)
-  installed and logged in (`claude` on your PATH or in `~/.local/bin`). The
-  unread messages are sent to Claude using your own Claude Code login.
+- **AI mail brief and PR reviews**: need [Claude Code](https://claude.com/claude-code)
+  installed and logged in (`claude` on your PATH or in `~/.local/bin`, or set
+  the path under "Claude CLI" in Settings). The unread messages and PR diffs
+  are sent to Claude using your own Claude Code login. Posting review comments
+  and approving needs the write scope listed for Bitbucket or GitLab above.
 - **Claude usage tile**: reads Claude Code's local data in `~/.claude`. It
   shows nothing if you don't use Claude Code.
 
@@ -232,7 +237,7 @@ The Settings drawer shows these steps next to each integration. **Save & connect
   folder).
 - Nothing is sent to any server run by this project. Data only goes to the
   services you link (ClickUp, Bitbucket, GitLab, Outlook) and, for the mail
-  brief, to Claude through your own Claude Code account.
+  brief and PR reviews, to Claude through your own Claude Code account.
 
 ## Development
 

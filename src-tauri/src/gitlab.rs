@@ -480,11 +480,8 @@ pub(crate) async fn post_comment(
         .map_err(|e| e.to_string())?;
     let status = resp.status();
     let text = resp.text().await.map_err(|e| e.to_string())?;
-    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return Err(format!(
-            "GitLab refused the comment ({status}). Posting needs a token with the \"api\" scope \
-             (read_api can't write): create one and save it in Settings. {text}"
-        ));
+    if text.contains("insufficient_scope") {
+        return Err(format!("GitLab refused the comment ({status}). {NEEDS_API_SCOPE}"));
     }
     if !status.is_success() {
         return Err(format!("GitLab API error ({status}) posting the comment: {text}"));
@@ -500,15 +497,17 @@ pub(crate) async fn post_comment(
     })
 }
 
-/// Approves the MR at the reviewed commit, or (request changes) withdraws your approval; GitLab's
-/// API has no request-changes state, so the comment carries it. Needs the `api` scope.
-pub(crate) async fn set_decision(url: &str, decision: &str, head_sha: &str) -> Result<(), String> {
+const NEEDS_API_SCOPE: &str = "Your GitLab token is read-only (read_api). Create one with the \"api\" scope \
+     and save it under GitLab in Settings.";
+
+/// Approves the MR (at its current head, like Bitbucket), or (request changes) withdraws your
+/// approval; GitLab's API has no request-changes state, so the comment carries it. Needs the `api` scope.
+pub(crate) async fn set_decision(url: &str, decision: &str) -> Result<(), String> {
     let (project, iid) = parse_mr_url(url).ok_or_else(|| format!("Not a GitLab merge request URL: {url}"))?;
     let token = get_token()?;
     let mr = format!("{}/projects/{project}/merge_requests/{iid}", api_base());
     let (endpoint, payload) = match decision {
-        // `sha` makes GitLab refuse (409) if commits were pushed after the review.
-        "approve" => (format!("{mr}/approve"), serde_json::json!({ "sha": head_sha })),
+        "approve" => (format!("{mr}/approve"), serde_json::json!({})),
         "request_changes" => (format!("{mr}/unapprove"), serde_json::json!({})),
         _ => return Ok(()),
     };
@@ -525,10 +524,9 @@ pub(crate) async fn set_decision(url: &str, decision: &str, head_sha: &str) -> R
     }
     let text = resp.text().await.unwrap_or_default();
     Err(match status.as_u16() {
-        409 => "The MR has new commits since this review. Re-review before approving.".into(),
+        401 | 403 if text.contains("insufficient_scope") => format!("GitLab refused ({status}). {NEEDS_API_SCOPE}"),
         401 | 403 => format!(
-            "GitLab refused ({status}): you may have approved already, may not be allowed to approve this MR, \
-             or the token lacks the \"api\" scope (read_api can't write). {text}"
+            "GitLab refused ({status}): you may have approved already or may not be allowed to approve this MR. {text}"
         ),
         _ => format!("GitLab refused ({status}): {text}"),
     })

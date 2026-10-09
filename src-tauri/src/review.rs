@@ -578,7 +578,7 @@ pub async fn submit_pr_decision(
             if decision == "request_changes" && body.is_empty() {
                 return Err("GitLab has no request-changes state: add a comment saying what to change.".into());
             }
-            crate::gitlab::set_decision(&url, &decision, &saved.pr.head_sha).await?
+            crate::gitlab::set_decision(&url, &decision).await?
         }
         other => return Err(format!("Unknown PR provider: {other}")),
     }

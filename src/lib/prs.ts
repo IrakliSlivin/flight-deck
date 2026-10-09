@@ -53,6 +53,15 @@ export function loadPrs(force = false): Promise<{ data: PullRequests; fetchedAt:
 }
 
 /**
+ * Refetches in the background after you change a PR (approve, request changes), so the list
+ * drops it. A fetch already in flight may predate the change, so this one runs after it.
+ */
+export function refreshPrs() {
+  const run = () => loadPrs(true).catch(() => undefined);
+  void (inflight ? inflight.then(run, run) : run());
+}
+
+/**
  * Fetches every linked PR source in parallel. Unlinked sources are skipped;
  * one failing source doesn't hide the others. Throws only when nothing is
  * linked or every linked source failed.

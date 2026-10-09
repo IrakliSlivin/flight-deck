@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { languageFor } from "./highlight";
-import type { PrProvider } from "./prs";
+import { refreshPrs, type PrProvider } from "./prs";
 
 // Claude reviews of a PR's diff (review.rs). Runs live in module state, so one keeps going
 // (and is shown) when you leave the review page and come back.
@@ -162,6 +162,7 @@ export async function postFindingComment(url: string, index: number, body: strin
 /** Approve / request changes / comment on the PR, with an optional comment. */
 export async function submitDecision(url: string, decision: DecisionKind, body: string) {
   applySaved(await invoke<SavedReview>("submit_pr_decision", { url, decision, body }));
+  if (decision !== "comment") refreshPrs();
 }
 
 const capitalize = (s: string) => s[0].toUpperCase() + s.slice(1);
