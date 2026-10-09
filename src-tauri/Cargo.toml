@@ -1,6 +1,6 @@
 [package]
 name = "flight-deck"
-version = "0.2.1"
+version = "0.2.2"
 description = "Flight Deck — personal developer dashboard"
 authors = ["Irakli Slivin"]
 edition = "2021"
