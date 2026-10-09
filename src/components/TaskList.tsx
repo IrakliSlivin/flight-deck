@@ -7,22 +7,119 @@ import {
   type ClickupTask,
 } from "../lib/clickup";
 
-// First match wins, so the specific statuses come first. Each entry is [pattern, pill, dot].
-const STATUS_TONE: [RegExp, string, string][] = [
-  [
-    /ready/i,
-    "text-emerald-300 border-emerald-300/30 bg-emerald-300/10",
-    "bg-emerald-300 shadow-[0_0_6px_rgba(110,231,183,.6)]",
-  ],
-  [/hold/i, "text-sky-300 border-sky-300/30 bg-sky-300/10", "bg-sky-300 shadow-[0_0_6px_rgba(125,211,252,.6)]"],
-  [/block/i, "text-rose-300 border-rose-300/30", "bg-rose-300 shadow-[0_0_6px_rgba(253,164,175,.6)]"],
-  [/progress|doing|dev/i, "text-amber-300 border-amber-300/30", "bg-amber-300 shadow-[0_0_6px_rgba(252,211,77,.6)]"],
-  [/review|qa|test/i, "text-violet-300 border-violet-300/30", "bg-violet-300 shadow-[0_0_6px_rgba(196,181,253,.6)]"],
+// Pill and dot classes per color, written out in full so Tailwind sees them.
+const TONES = {
+  slate: {
+    pill: "text-slate-300 border-slate-300/30 bg-slate-300/10",
+    dot: "bg-slate-300 shadow-[0_0_6px_rgba(203,213,225,.5)]",
+  },
+  pink: {
+    pill: "text-pink-300 border-pink-300/30 bg-pink-300/10",
+    dot: "bg-pink-300 shadow-[0_0_6px_rgba(249,168,212,.6)]",
+  },
+  fuchsia: {
+    pill: "text-fuchsia-300 border-fuchsia-300/30 bg-fuchsia-300/10",
+    dot: "bg-fuchsia-300 shadow-[0_0_6px_rgba(240,171,252,.6)]",
+  },
+  orange: {
+    pill: "text-orange-300 border-orange-300/30 bg-orange-300/10",
+    dot: "bg-orange-300 shadow-[0_0_6px_rgba(253,186,116,.6)]",
+  },
+  yellow: {
+    pill: "text-yellow-300 border-yellow-300/30 bg-yellow-300/10",
+    dot: "bg-yellow-300 shadow-[0_0_6px_rgba(253,224,71,.6)]",
+  },
+  amber: {
+    pill: "text-amber-300 border-amber-300/30 bg-amber-300/10",
+    dot: "bg-amber-300 shadow-[0_0_6px_rgba(252,211,77,.6)]",
+  },
+  indigo: {
+    pill: "text-indigo-300 border-indigo-300/30 bg-indigo-300/10",
+    dot: "bg-indigo-300 shadow-[0_0_6px_rgba(165,180,252,.6)]",
+  },
+  blue: {
+    pill: "text-blue-300 border-blue-300/30 bg-blue-300/10",
+    dot: "bg-blue-300 shadow-[0_0_6px_rgba(147,197,253,.6)]",
+  },
+  sky: {
+    pill: "text-sky-300 border-sky-300/30 bg-sky-300/10",
+    dot: "bg-sky-300 shadow-[0_0_6px_rgba(125,211,252,.6)]",
+  },
+  violet: {
+    pill: "text-violet-300 border-violet-300/30 bg-violet-300/10",
+    dot: "bg-violet-300 shadow-[0_0_6px_rgba(196,181,253,.6)]",
+  },
+  emerald: {
+    pill: "text-emerald-300 border-emerald-300/30 bg-emerald-300/10",
+    dot: "bg-emerald-300 shadow-[0_0_6px_rgba(110,231,183,.6)]",
+  },
+  green: {
+    pill: "text-green-300 border-green-300/30 bg-green-300/10",
+    dot: "bg-green-300 shadow-[0_0_6px_rgba(134,239,172,.6)]",
+  },
+  rose: {
+    pill: "text-rose-300 border-rose-300/30 bg-rose-300/10",
+    dot: "bg-rose-300 shadow-[0_0_6px_rgba(253,164,175,.6)]",
+  },
+};
+type ToneName = keyof typeof TONES;
+
+// Every status in the ClickUp workspace, fetched once (2026-10-09) and colored by stage. ClickUp's
+// own colors differ between lists, so these are fixed here instead.
+const STATUS_COLORS: Record<string, ToneName> = {
+  // not started
+  "to do": "slate",
+  "not started": "slate",
+  future: "slate",
+  requested: "slate",
+  "for triage": "slate",
+  // triage and grooming
+  triaged: "pink",
+  "to be confirmed": "pink",
+  confirmed: "pink",
+  "for grooming": "pink",
+  analysing: "fuchsia",
+  "sd to be confirmed": "fuchsia",
+  "for sizing": "orange",
+  "for development": "orange",
+  returned: "orange",
+  "for planning": "yellow",
+  // in flight
+  "in progress": "amber",
+  created: "amber",
+  investigating: "indigo",
+  "for investigation": "indigo",
+  "pull request": "blue",
+  "on hold": "sky",
+  review: "violet",
+  testing: "violet",
+  ready: "emerald",
+  // done
+  accepted: "green",
+  appproved: "green", // spelled this way in ClickUp
+  classified: "green",
+  resolved: "green",
+  complete: "green",
+  closed: "green",
+  released: "green",
+  // stopped
+  stuck: "rose",
+  declined: "rose",
+  rejected: "rose",
+};
+
+// For statuses added later: first match wins.
+const STATUS_PATTERNS: [RegExp, ToneName][] = [
+  [/ready/i, "emerald"],
+  [/hold/i, "sky"],
+  [/block|stuck/i, "rose"],
+  [/progress|doing|dev/i, "amber"],
+  [/review|qa|test/i, "violet"],
 ];
 
 function statusTone(status: string): { pill: string; dot: string } {
-  const match = STATUS_TONE.find(([re]) => re.test(status));
-  return match ? { pill: match[1], dot: match[2] } : { pill: "text-slate-400 border-white/10", dot: "bg-slate-500" };
+  const name = STATUS_COLORS[status.trim().toLowerCase()] ?? STATUS_PATTERNS.find(([re]) => re.test(status))?.[1];
+  return name ? TONES[name] : { pill: "text-slate-400 border-white/10", dot: "bg-slate-500" };
 }
 
 // Group order in the list: work in flight first, then waiting states, then everything else (to do, open…).

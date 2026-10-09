@@ -30,10 +30,19 @@ use notifications::{clear_notifications, dismiss_notification, get_notification_
 mod reminders;
 use reminders::{get_reminder_settings, set_reminder_settings};
 
+mod claude_cli;
+use claude_cli::check_claude_cli;
+
 mod outlook;
 use outlook::{
-    brief_outlook_inbox, check_claude_cli, get_outlook_inbox, open_outlook, refresh_outlook,
-    report_outlook_inbox, OutlookState,
+    brief_outlook_inbox, get_outlook_inbox, open_outlook, refresh_outlook, report_outlook_inbox, OutlookState,
+};
+
+mod diff;
+mod review;
+use review::{
+    cancel_pr_review, fetch_pr_diff, get_pr_review, list_pr_reviews, post_review_comment, review_pr, submit_pr_decision,
+    ReviewState,
 };
 
 const DB_URL: &str = "sqlite:dashboard.db";
@@ -103,6 +112,7 @@ pub fn run() {
 
     builder
         .manage(OutlookState::default())
+        .manage(ReviewState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(
@@ -168,6 +178,13 @@ pub fn run() {
             refresh_outlook,
             brief_outlook_inbox,
             check_claude_cli,
+            fetch_pr_diff,
+            review_pr,
+            get_pr_review,
+            list_pr_reviews,
+            cancel_pr_review,
+            post_review_comment,
+            submit_pr_decision,
             quit_app,
             get_reminder_settings,
             set_reminder_settings,

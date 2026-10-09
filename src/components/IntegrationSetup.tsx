@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { checkBitbucket, listBitbucketRepos, type BitbucketSetup } from "../lib/bitbucket";
 import { fetchMeetings } from "../lib/calendar";
 import { checkClickup, type ClickupSetup } from "../lib/clickup";
@@ -289,13 +290,118 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
+/** "All repos", or the first few watched repos. */
+function watchedSummary(watched: string[]): string {
+  if (watched.length === 0) return "All repos";
+  const shown = watched.slice(0, 3).join(", ");
+  return watched.length > 3 ? `${shown} +${watched.length - 3}` : shown;
+}
+
+/** The repo list in a popup, so a workspace with many repos doesn't stretch the drawer. */
+function RepoPicker({
+  repos,
+  failed,
+  watched,
+  onToggle,
+  onAll,
+  onClose,
+}: {
+  repos: string[] | null;
+  failed: string | null;
+  watched: string[];
+  onToggle: (slug: string) => void;
+  onAll: () => void;
+  onClose: () => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const q = filter.toLowerCase();
+  // Watched repos first, so the current choice is visible without scrolling.
+  const shown = [...new Set([...watched, ...(repos ?? [])])]
+    .filter((r) => r.toLowerCase().includes(q))
+    .sort((a, b) => Number(watched.includes(b)) - Number(watched.includes(a)) || a.localeCompare(b));
+
+  // Portaled to <body>: the drawer is fixed and would clip it.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => {
+        // Handled here so Escape closes only the popup, not the drawer behind it.
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <div className="glass flex max-h-[min(560px,85vh)] w-full max-w-md flex-col rounded-2xl">
+        <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
+          <h3 className="label !text-[12px] text-slate-200">Repos to watch</h3>
+          <span className="font-mono text-[11px] text-slate-500">
+            {watched.length === 0 ? "all" : `${watched.length} selected`}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 px-4 pt-3">
+          <input
+            autoFocus
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder={repos ? `Filter ${repos.length} repos…` : "Loading repos…"}
+            className={INPUT}
+          />
+          <Chip on={watched.length === 0} onClick={onAll}>
+            All repos
+          </Chip>
+        </div>
+        {failed && <p className="px-4 pt-2 text-xs text-rose-400">{failed}</p>}
+        <ul className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+          {shown.map((slug) => {
+            const on = watched.includes(slug);
+            return (
+              <li key={slug}>
+                <button
+                  role="checkbox"
+                  aria-checked={on}
+                  onClick={() => onToggle(slug)}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-white/[0.04]"
+                >
+                  <span
+                    className={`grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] ${
+                      on ? "border-amber-400 bg-amber-400 text-slate-900" : "border-white/20"
+                    }`}
+                  >
+                    {on && "✓"}
+                  </span>
+                  <span className={`font-mono text-[12px] ${on ? "text-slate-100" : "text-slate-400"}`}>{slug}</span>
+                </button>
+              </li>
+            );
+          })}
+          {repos && shown.length === 0 && <li className="px-2 py-3 text-xs text-slate-500">No repo matches.</li>}
+        </ul>
+        <div className="flex items-center gap-3 border-t border-white/[0.07] px-4 py-3">
+          <p className="min-w-0 flex-1 text-xs text-slate-500">
+            "Needs your review" scans these. All repos is simplest; pick a few if it's slow.
+          </p>
+          <button
+            onClick={onClose}
+            className="label rounded-md bg-amber-300 px-3 py-1.5 !text-[11px] text-slate-900 transition hover:bg-amber-200"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function BitbucketPickers({ setup }: { setup: BitbucketSetup }) {
   const [workspaceRaw, setWorkspaceRaw, wsError] = useSetting("bitbucket.workspace");
   const [reposRaw, setReposRaw, repoError] = useSetting("bitbucket.repos");
   const [typedWorkspace, setTypedWorkspace] = useState<string | null>(null);
   const [repos, setRepos] = useState<string[] | null>(null);
   const [reposFailed, setReposFailed] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
+  const [picking, setPicking] = useState(false);
 
   const selected = useMemo(() => csv(typedWorkspace ?? workspaceRaw), [typedWorkspace, workspaceRaw]);
   const watched = csv(reposRaw);
@@ -328,10 +434,6 @@ function BitbucketPickers({ setup }: { setup: BitbucketSetup }) {
     setWorkspaceRaw((selected.includes(slug) ? selected.filter((s) => s !== slug) : [...selected, slug]).join(","));
   const toggleRepo = (slug: string) =>
     setReposRaw((watched.includes(slug) ? watched.filter((s) => s !== slug) : [...watched, slug]).join(","));
-  const shown = [...new Set([...watched, ...(repos ?? [])])]
-    .filter((r) => r.toLowerCase().includes(filter.toLowerCase()))
-    .sort();
-
   return (
     <>
       <PickerRow label="Workspace">
@@ -364,30 +466,27 @@ function BitbucketPickers({ setup }: { setup: BitbucketSetup }) {
       {selected.length > 0 && (
         <PickerRow label="Repos to watch">
           <div className="flex items-center gap-2">
-            <Chip on={watched.length === 0} onClick={() => setReposRaw("")}>
-              All repos
-            </Chip>
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder={repos ? `Filter ${repos.length} repos…` : "Loading repos…"}
-              className={`${INPUT} !py-1 !text-xs`}
-            />
+            <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-slate-200" title={watched.join(", ")}>
+              {watchedSummary(watched)}
+            </span>
+            <button
+              onClick={() => setPicking(true)}
+              className="shrink-0 rounded-md border border-white/10 px-2.5 py-1 text-xs text-slate-300 transition hover:border-amber-300/40 hover:text-amber-200"
+            >
+              Choose…
+            </button>
           </div>
-          {reposFailed && <p className="text-xs text-rose-400">{reposFailed}</p>}
-          {shown.length > 0 && (
-            <div className="flex max-h-40 flex-wrap content-start gap-1 overflow-y-auto">
-              {shown.map((slug) => (
-                <Chip key={slug} on={watched.includes(slug)} onClick={() => toggleRepo(slug)}>
-                  {slug}
-                </Chip>
-              ))}
-            </div>
-          )}
-          <p className="text-xs text-slate-500">
-            "Needs your review" scans these. All repos is simplest; pick a few if it's slow.
-          </p>
           {repoError && <p className="text-xs text-rose-400">{repoError}</p>}
+          {picking && (
+            <RepoPicker
+              repos={repos}
+              failed={reposFailed}
+              watched={watched}
+              onToggle={toggleRepo}
+              onAll={() => setReposRaw("")}
+              onClose={() => setPicking(false)}
+            />
+          )}
         </PickerRow>
       )}
     </>

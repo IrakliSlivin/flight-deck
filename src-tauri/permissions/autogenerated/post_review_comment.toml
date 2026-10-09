@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-post-review-comment"
+description = "Enables the post_review_comment command without any pre-configured scope."
+commands.allow = ["post_review_comment"]
+
+[[permission]]
+identifier = "deny-post-review-comment"
+description = "Denies the post_review_comment command without any pre-configured scope."
+commands.deny = ["post_review_comment"]

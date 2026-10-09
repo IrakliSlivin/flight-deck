@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Today } from "./Today";
 import { PRs } from "./PRs";
 import { News } from "./News";
+import type { PullRequest } from "../lib/prs";
 
 export type TabId = "today" | "prs" | "news";
 
@@ -10,6 +11,8 @@ export interface TabContext {
   navigate: (id: TabId) => void;
   openSettings: () => void;
   openPalette: () => void;
+  /** Opens the Claude review page for a PR. */
+  openReview: (pr: PullRequest) => void;
 }
 
 export interface TabDef {
@@ -27,7 +30,7 @@ export const TABS: TabDef[] = [
   {
     id: "prs",
     label: "Pull Requests",
-    render: () => <PRs />,
+    render: (ctx) => <PRs onReview={ctx.openReview} />,
   },
   {
     id: "news",

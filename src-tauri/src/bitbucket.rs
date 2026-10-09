@@ -64,12 +64,7 @@ fn parse_csv_list(raw: &str) -> Vec<String> {
         .collect()
 }
 
-async fn get_json<T: for<'de> Deserialize<'de>>(
-    client: &reqwest::Client,
-    url: &str,
-    email: &str,
-    token: &str,
-) -> Result<T, String> {
+async fn get_text(client: &reqwest::Client, url: &str, email: &str, token: &str) -> Result<String, String> {
     let resp = client
         .get(url)
         .basic_auth(email, Some(token))
@@ -81,6 +76,16 @@ async fn get_json<T: for<'de> Deserialize<'de>>(
     if !status.is_success() {
         return Err(format!("Bitbucket API error ({status}) calling {url}: {body}"));
     }
+    Ok(body)
+}
+
+async fn get_json<T: for<'de> Deserialize<'de>>(
+    client: &reqwest::Client,
+    url: &str,
+    email: &str,
+    token: &str,
+) -> Result<T, String> {
+    let body = get_text(client, url, email, token).await?;
     serde_json::from_str(&body).map_err(|e| format!("Failed to parse Bitbucket response: {e}"))
 }
 
@@ -627,4 +632,162 @@ pub async fn list_bitbucket_repos(workspace: String) -> Result<Vec<String>, Stri
     }
     slugs.sort();
     Ok(slugs)
+}
+
+// --- One PR's details and diff, for a Claude review (review.rs).
+
+#[derive(Deserialize)]
+struct PrDetail {
+    title: String,
+    #[serde(default)]
+    description: Option<String>,
+    author: RawAuthor,
+    source: PrEnd,
+    destination: PrEnd,
+}
+#[derive(Deserialize)]
+struct PrEnd {
+    branch: PrBranch,
+    #[serde(default)]
+    commit: Option<PrCommit>,
+}
+#[derive(Deserialize)]
+struct PrBranch {
+    name: String,
+}
+#[derive(Deserialize)]
+struct PrCommit {
+    hash: String,
+}
+
+/// `workspace/repo` and the id from bitbucket.org/<workspace>/<repo>/pull-requests/<id>.
+fn parse_pr_url(url: &str) -> Option<(String, i64)> {
+    let path = url.split_once("bitbucket.org/")?.1;
+    let mut parts = path.split('/');
+    let (workspace, repo, kind, id) = (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+    (kind == "pull-requests").then_some(())?;
+    Some((format!("{workspace}/{repo}"), id.parse().ok()?))
+}
+
+/// Diffs can be large, so they get more time than the list requests.
+const DIFF_TIMEOUT_SECS: u64 = 60;
+
+pub(crate) async fn fetch_pr_diff(url: &str) -> Result<crate::review::PrDiff, String> {
+    let (repo, id) = parse_pr_url(url).ok_or_else(|| format!("Not a Bitbucket pull request URL: {url}"))?;
+    let (email, token) = get_creds()?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(DIFF_TIMEOUT_SECS))
+        .build()
+        .unwrap_or_default();
+    let base = format!("https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests/{id}");
+    // The diff endpoint redirects to /diff/<spec> on the same host, which keeps the auth header.
+    let diff_url = format!("{base}/diff");
+    let (detail, diff) = futures::join!(
+        get_json::<PrDetail>(&client, &base, &email, &token),
+        get_text(&client, &diff_url, &email, &token),
+    );
+    let detail = detail?;
+    Ok(crate::review::PrDiff {
+        title: detail.title,
+        description: detail.description.unwrap_or_default(),
+        author: detail.author.display_name,
+        source_branch: detail.source.branch.name,
+        dest_branch: detail.destination.branch.name,
+        head_sha: detail.source.commit.map(|c| c.hash).unwrap_or_default(),
+        base_sha: String::new(),
+        start_sha: String::new(),
+        files: crate::diff::parse_unified(&diff?),
+    })
+}
+
+/// Posts a comment on the PR: inline on a line when `target` is given, otherwise on the PR
+/// itself. Returns the comment's URL. Needs the write:pullrequest:bitbucket scope.
+pub(crate) async fn post_comment(
+    url: &str,
+    body: &str,
+    target: Option<&crate::review::CommentTarget>,
+) -> Result<String, String> {
+    let (repo, id) = parse_pr_url(url).ok_or_else(|| format!("Not a Bitbucket pull request URL: {url}"))?;
+    let (email, token) = get_creds()?;
+    let mut payload = serde_json::json!({ "content": { "raw": body } });
+    if let Some(t) = target {
+        // `to` is a line in the new file, `from` one in the old file (a removed line).
+        payload["inline"] = match t.new_line {
+            Some(line) => serde_json::json!({ "path": t.path, "to": line }),
+            None => serde_json::json!({ "path": t.old_path, "from": t.old_line }),
+        };
+    }
+    let resp = new_client()
+        .post(format!("https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests/{id}/comments"))
+        .basic_auth(&email, Some(&token))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(format!(
+            "Bitbucket refused the comment ({status}). Posting needs a token with the \
+             write:pullrequest:bitbucket scope: create one and save it in Settings. {text}"
+        ));
+    }
+    if !status.is_success() {
+        return Err(format!("Bitbucket API error ({status}) posting the comment: {text}"));
+    }
+    let comment: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+    Ok(comment["links"]["html"]["href"].as_str().unwrap_or(url).to_string())
+}
+
+/// Approves the PR or requests changes on it ("comment" does neither). Needs the
+/// write:pullrequest:bitbucket scope.
+pub(crate) async fn set_decision(url: &str, decision: &str) -> Result<(), String> {
+    let action = match decision {
+        "approve" => "approve",
+        "request_changes" => "request-changes",
+        _ => return Ok(()),
+    };
+    let (repo, id) = parse_pr_url(url).ok_or_else(|| format!("Not a Bitbucket pull request URL: {url}"))?;
+    let (email, token) = get_creds()?;
+    let resp = new_client()
+        .post(format!("https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests/{id}/{action}"))
+        .basic_auth(&email, Some(&token))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let text = resp.text().await.unwrap_or_default();
+    // Bitbucket explains refusals (e.g. approving your own PR) in error.message.
+    let message = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
+        .unwrap_or(text);
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(format!(
+            "Bitbucket refused ({status}): {message}. Approving needs a token with the \
+             write:pullrequest:bitbucket scope: create one and save it in Settings."
+        ));
+    }
+    Err(format!("Bitbucket refused ({status}): {message}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_pr_urls() {
+        assert_eq!(
+            parse_pr_url("https://bitbucket.org/acme/billing/pull-requests/42"),
+            Some(("acme/billing".into(), 42))
+        );
+        assert_eq!(
+            parse_pr_url("https://bitbucket.org/acme/billing/pull-requests/42/diff"),
+            Some(("acme/billing".into(), 42))
+        );
+        assert_eq!(parse_pr_url("https://bitbucket.org/acme/billing/src/main"), None);
+    }
 }

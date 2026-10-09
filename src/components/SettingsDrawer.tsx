@@ -34,7 +34,16 @@ export interface IntegrationDef {
   /** Settings saved by the pickers, cleared on Disconnect too. */
   settingKeys?: string[];
   helpUrl?: string;
-  instructions?: string[];
+  /** Setup steps; a step with `scopes` lists the token scopes to check under its text. */
+  instructions?: (string | { text: string; scopes: ScopeDef[] })[];
+}
+
+interface ScopeDef {
+  name: string;
+  /** Shown next to the scope. */
+  note?: string;
+  /** Lets the app write (comments, approvals): highlighted, since it's easy to miss. */
+  write?: boolean;
 }
 
 export const INTEGRATIONS: IntegrationDef[] = [
@@ -63,7 +72,20 @@ export const INTEGRATIONS: IntegrationDef[] = [
     instructions: [
       'Open the link below and click "Create API token with scopes" (not the plain "Create API token" — that one has no scopes).',
       'Pick "Bitbucket" in the App dropdown; the scope checkboxes only appear after that.',
-      "Check read:pullrequest:bitbucket, read:user:bitbucket, read:repository:bitbucket and read:workspace:bitbucket (the last one lets you pick your workspace from a list).",
+      {
+        text: "Check these scopes:",
+        scopes: [
+          { name: "read:pullrequest:bitbucket" },
+          { name: "read:user:bitbucket" },
+          { name: "read:repository:bitbucket" },
+          { name: "read:workspace:bitbucket", note: "pick your workspace from a list" },
+          {
+            name: "write:pullrequest:bitbucket",
+            note: "comment, approve and request changes from a PR review",
+            write: true,
+          },
+        ],
+      },
       "Copy the token (it's shown only once), enter it with the email you log into Bitbucket with, and press Save & connect.",
     ],
   },
@@ -85,7 +107,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
     helpUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",
     instructions: [
       'Open the link below (self-hosted: avatar → Edit profile → Access tokens) and click "Add new token".',
-      'Check only the "read_api" scope, create it, and paste it below.',
+      {
+        text: "Check one scope, create the token, and paste it below:",
+        scopes: [
+          { name: "read_api", note: "enough to list merge requests" },
+          { name: "api", note: "instead of read_api: comment and approve from a PR review", write: true },
+        ],
+      },
     ],
   },
   {
@@ -371,7 +399,36 @@ export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () =
                   </summary>
                   <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs text-slate-400">
                     {integration.instructions.map((step, i) => (
-                      <li key={i}>{step}</li>
+                      <li key={i}>
+                        {typeof step === "string" ? (
+                          step
+                        ) : (
+                          <>
+                            {step.text}
+                            <ul className="mt-1 mb-1.5 flex flex-col gap-1">
+                              {step.scopes.map((scope) => (
+                                <li key={scope.name} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                  <code
+                                    className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${
+                                      scope.write
+                                        ? "border border-amber-300/40 bg-amber-300/10 text-amber-200"
+                                        : "bg-white/[0.06] text-slate-200"
+                                    }`}
+                                  >
+                                    {scope.name}
+                                  </code>
+                                  {scope.note && (
+                                    <span className={scope.write ? "text-amber-200/80" : "text-slate-500"}>
+                                      {scope.write && "✦ "}
+                                      {scope.note}
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                      </li>
                     ))}
                   </ol>
                   {integration.helpUrl && (

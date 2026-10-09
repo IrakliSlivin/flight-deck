@@ -4,6 +4,7 @@ import { Card, GhostButton, SectionHeader } from "../components/Card";
 import { StatTile, type TileState } from "../components/StatTile";
 import { BitbucketIcon, GitlabIcon, PrIcon, TasksIcon, RefreshIcon } from "../components/Icons";
 import { PROVIDER_NAME, loadPrs, type PrProvider, type PullRequest, type PullRequests } from "../lib/prs";
+import { loadReviewSummaries, useReviews } from "../lib/review";
 
 /** Approvals needed before a PR can merge. */
 const REQUIRED_APPROVALS = 2;
@@ -123,13 +124,46 @@ function ProviderIcon({ provider }: { provider: PrProvider }) {
   );
 }
 
-function PrRow({ pr, index }: { pr: PullRequest; index: number }) {
+/** Opens the Claude review page; shows a run in progress or the last review's result. */
+function ReviewButton({ pr, onReview }: { pr: PullRequest; onReview: (pr: PullRequest) => void }) {
+  const { running, summaries } = useReviews();
+  const summary = summaries[pr.url];
+  let label = "✦ Review";
+  let tone = "text-slate-500 hover:text-amber-200";
+  let title = "Review this PR's diff with Claude";
+  if (running[pr.url]) {
+    label = "✦ Reviewing";
+    tone = "blink text-amber-300";
+    title = "Claude is reviewing this PR";
+  } else if (summary) {
+    label = summary.findings ? `✦ ${summary.findings}` : "✦ ✓";
+    tone = summary.blockers
+      ? "text-rose-300"
+      : summary.verdict === "approve"
+        ? "text-emerald-300"
+        : "text-sky-300";
+    title = `Reviewed ${new Date(summary.reviewed_at).toLocaleString()}: ${summary.findings} findings${
+      summary.blockers ? `, ${summary.blockers} blocking` : ""
+    }`;
+  }
   return (
-    <li className="rise" style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}>
+    <button
+      onClick={() => onReview(pr)}
+      title={title}
+      className={`shrink-0 rounded-md border border-white/[0.07] px-2 py-1 font-mono text-[11px] transition hover:border-amber-300/40 ${tone}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function PrRow({ pr, index, onReview }: { pr: PullRequest; index: number; onReview: (pr: PullRequest) => void }) {
+  return (
+    <li className="rise flex items-center gap-1" style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}>
       <button
         onClick={() => openUrl(pr.url)}
         title={pr.url}
-        className="group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition-colors hover:border-white/[0.07] hover:bg-white/[0.03]"
+        className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition-colors hover:border-white/[0.07] hover:bg-white/[0.03]"
       >
         <ApprovalRing pr={pr} />
         <div className="min-w-0 flex-1">
@@ -153,6 +187,7 @@ function PrRow({ pr, index }: { pr: PullRequest; index: number }) {
           ↗
         </span>
       </button>
+      <ReviewButton pr={pr} onReview={onReview} />
     </li>
   );
 }
@@ -189,11 +224,13 @@ function PrColumn({
   groups,
   empty,
   delay,
+  onReview,
 }: {
   title: string;
   groups: PrGroup[];
   empty: string;
   delay: number;
+  onReview: (pr: PullRequest) => void;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const shown = groups.filter((g) => g.prs.length > 0);
@@ -233,7 +270,7 @@ function PrColumn({
               {open && (
                 <ul className="flex flex-col">
                   {group.prs.map((pr, i) => (
-                    <PrRow key={`${pr.provider}:${pr.source_repo}#${pr.id}`} pr={pr} index={i} />
+                    <PrRow key={`${pr.provider}:${pr.source_repo}#${pr.id}`} pr={pr} index={i} onReview={onReview} />
                   ))}
                 </ul>
               )}
@@ -272,7 +309,7 @@ const byOldest = (a: PullRequest, b: PullRequest) =>
   new Date(a.updated_on).getTime() - new Date(b.updated_on).getTime();
 const byNewest = (a: PullRequest, b: PullRequest) => byOldest(b, a);
 
-export function PRs() {
+export function PRs({ onReview }: { onReview: (pr: PullRequest) => void }) {
   const [data, setData] = useState<PullRequests | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -298,6 +335,7 @@ export function PRs() {
 
   useEffect(() => {
     refresh(false);
+    loadReviewSummaries();
   }, []);
 
   const repos = useMemo(() => {
@@ -454,6 +492,7 @@ export function PRs() {
                 ]}
                 empty="Nothing waiting on you."
                 delay={260}
+                onReview={onReview}
               />
               <PrColumn
                 title="Your PRs"
@@ -479,6 +518,7 @@ export function PRs() {
                 ]}
                 empty="No open PRs."
                 delay={320}
+                onReview={onReview}
               />
             </div>
           )}

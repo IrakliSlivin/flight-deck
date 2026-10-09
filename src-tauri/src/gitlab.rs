@@ -298,3 +298,256 @@ pub async fn check_gitlab() -> Result<String, String> {
         .trim_start_matches("http://");
     Ok(format!("@{} on {host}", me.username))
 }
+
+// --- One MR's details and diff, for a Claude review (review.rs).
+
+#[derive(Deserialize)]
+struct MrDetail {
+    title: String,
+    #[serde(default)]
+    description: Option<String>,
+    author: RawAuthor,
+    source_branch: String,
+    target_branch: String,
+    #[serde(default)]
+    sha: Option<String>,
+    #[serde(default)]
+    diff_refs: Option<DiffRefs>,
+}
+
+/// The diff version an MR is at; a line comment's position must name it.
+#[derive(Deserialize)]
+struct DiffRefs {
+    base_sha: String,
+    start_sha: String,
+    head_sha: String,
+}
+
+#[derive(Deserialize)]
+struct MrFileDiff {
+    old_path: String,
+    new_path: String,
+    #[serde(default)]
+    new_file: bool,
+    #[serde(default)]
+    renamed_file: bool,
+    #[serde(default)]
+    deleted_file: bool,
+    #[serde(default)]
+    diff: String,
+}
+
+#[derive(Deserialize)]
+struct MrChanges {
+    changes: Vec<MrFileDiff>,
+}
+
+/// The URL-encoded project path and the iid from <host>/<group>/<project>/-/merge_requests/<iid>.
+fn parse_mr_url(url: &str) -> Option<(String, i64)> {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let (_host, path) = rest.split_once('/')?;
+    let (project, tail) = path.split_once("/-/merge_requests/")?;
+    let iid = tail.split(['/', '?', '#']).next()?.parse().ok()?;
+    Some((project.replace('/', "%2F"), iid))
+}
+
+const DIFF_TIMEOUT_SECS: u64 = 60;
+const DIFF_PAGE_SIZE: usize = 50;
+const MAX_DIFF_PAGES: usize = 40;
+
+/// Every file diff of the MR. `/diffs` (GitLab 15.7+) is paginated; older instances only have
+/// `/changes`.
+async fn mr_file_diffs(client: &reqwest::Client, mr: &str, token: &str) -> Result<Vec<MrFileDiff>, String> {
+    let mut files = Vec::new();
+    for page in 1..=MAX_DIFF_PAGES {
+        let url = format!("{mr}/diffs?page={page}&per_page={DIFF_PAGE_SIZE}");
+        let batch: Vec<MrFileDiff> = match get_json(client, &url, token).await {
+            Ok(batch) => batch,
+            Err(e) if page == 1 && e.contains("(404") => {
+                return Ok(get_json::<MrChanges>(client, &format!("{mr}/changes"), token).await?.changes);
+            }
+            Err(e) => return Err(e),
+        };
+        let last = batch.len() < DIFF_PAGE_SIZE;
+        files.extend(batch);
+        if last {
+            break;
+        }
+    }
+    Ok(files)
+}
+
+pub(crate) async fn fetch_pr_diff(url: &str) -> Result<crate::review::PrDiff, String> {
+    use crate::diff::{parse_hunks, DiffFile, FileStatus};
+    let (project, iid) = parse_mr_url(url).ok_or_else(|| format!("Not a GitLab merge request URL: {url}"))?;
+    let token = get_token()?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(DIFF_TIMEOUT_SECS))
+        .build()
+        .unwrap_or_default();
+    let mr = format!("{}/projects/{project}/merge_requests/{iid}", api_base());
+    let (detail, files) = futures::join!(get_json::<MrDetail>(&client, &mr, &token), mr_file_diffs(&client, &mr, &token));
+    let detail = detail?;
+    let files = files?
+        .into_iter()
+        .map(|f| {
+            let status = if f.new_file {
+                FileStatus::Added
+            } else if f.deleted_file {
+                FileStatus::Deleted
+            } else if f.renamed_file {
+                FileStatus::Renamed
+            } else {
+                FileStatus::Modified
+            };
+            // An empty diff is a binary file, or one too large for the API to return.
+            let hunks = parse_hunks(&f.diff);
+            let binary = hunks.is_empty() && status != FileStatus::Renamed;
+            DiffFile::new(&f.old_path, &f.new_path, status, hunks, binary)
+        })
+        .collect();
+    Ok(crate::review::PrDiff {
+        title: detail.title,
+        description: detail.description.unwrap_or_default(),
+        author: detail.author.name,
+        source_branch: detail.source_branch,
+        dest_branch: detail.target_branch,
+        head_sha: detail.sha.unwrap_or_default(),
+        base_sha: detail.diff_refs.as_ref().map(|r| r.base_sha.clone()).unwrap_or_default(),
+        start_sha: detail.diff_refs.as_ref().map(|r| r.start_sha.clone()).unwrap_or_default(),
+        files,
+    })
+}
+
+#[derive(Deserialize)]
+struct NoteId {
+    id: i64,
+}
+#[derive(Deserialize)]
+struct Discussion {
+    notes: Vec<NoteId>,
+}
+
+/// Posts a comment on the MR: a discussion on a line of the reviewed diff when `target` is
+/// given, otherwise a note on the MR itself. Returns the comment's URL. Needs the `api` scope.
+pub(crate) async fn post_comment(
+    url: &str,
+    pr: &crate::review::PrDiff,
+    body: &str,
+    target: Option<&crate::review::CommentTarget>,
+) -> Result<String, String> {
+    let (project, iid) = parse_mr_url(url).ok_or_else(|| format!("Not a GitLab merge request URL: {url}"))?;
+    let token = get_token()?;
+    let client = new_client();
+    let mr = format!("{}/projects/{project}/merge_requests/{iid}", api_base());
+    let (endpoint, payload) = match target {
+        None => (format!("{mr}/notes"), serde_json::json!({ "body": body })),
+        Some(t) => {
+            let (base_sha, start_sha) = if pr.base_sha.is_empty() {
+                // Saved before diff refs were kept: usable only while the MR is still at that commit.
+                let detail: MrDetail = get_json(&client, &mr, &token).await?;
+                match detail.diff_refs {
+                    Some(r) if r.head_sha == pr.head_sha => (r.base_sha, r.start_sha),
+                    _ => return Err("The MR has new commits since this review. Re-review to comment on lines.".into()),
+                }
+            } else {
+                (pr.base_sha.clone(), pr.start_sha.clone())
+            };
+            // An unchanged line needs both line numbers; an added or removed one only its own.
+            let mut position = serde_json::json!({
+                "position_type": "text",
+                "base_sha": base_sha,
+                "start_sha": start_sha,
+                "head_sha": pr.head_sha,
+                "old_path": t.old_path,
+                "new_path": t.path,
+            });
+            if let Some(line) = t.old_line {
+                position["old_line"] = line.into();
+            }
+            if let Some(line) = t.new_line {
+                position["new_line"] = line.into();
+            }
+            (format!("{mr}/discussions"), serde_json::json!({ "body": body, "position": position }))
+        }
+    };
+    let resp = client
+        .post(&endpoint)
+        .header("PRIVATE-TOKEN", &token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(format!(
+            "GitLab refused the comment ({status}). Posting needs a token with the \"api\" scope \
+             (read_api can't write): create one and save it in Settings. {text}"
+        ));
+    }
+    if !status.is_success() {
+        return Err(format!("GitLab API error ({status}) posting the comment: {text}"));
+    }
+    let note = if target.is_some() {
+        serde_json::from_str::<Discussion>(&text).ok().and_then(|d| d.notes.first().map(|n| n.id))
+    } else {
+        serde_json::from_str::<NoteId>(&text).ok().map(|n| n.id)
+    };
+    Ok(match note {
+        Some(id) => format!("{url}#note_{id}"),
+        None => url.to_string(),
+    })
+}
+
+/// Approves the MR at the reviewed commit, or (request changes) withdraws your approval; GitLab's
+/// API has no request-changes state, so the comment carries it. Needs the `api` scope.
+pub(crate) async fn set_decision(url: &str, decision: &str, head_sha: &str) -> Result<(), String> {
+    let (project, iid) = parse_mr_url(url).ok_or_else(|| format!("Not a GitLab merge request URL: {url}"))?;
+    let token = get_token()?;
+    let mr = format!("{}/projects/{project}/merge_requests/{iid}", api_base());
+    let (endpoint, payload) = match decision {
+        // `sha` makes GitLab refuse (409) if commits were pushed after the review.
+        "approve" => (format!("{mr}/approve"), serde_json::json!({ "sha": head_sha })),
+        "request_changes" => (format!("{mr}/unapprove"), serde_json::json!({})),
+        _ => return Ok(()),
+    };
+    let resp = new_client()
+        .post(&endpoint)
+        .header("PRIVATE-TOKEN", &token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if status.is_success() || decision == "request_changes" && status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(()); // 404 on unapprove: you hadn't approved
+    }
+    let text = resp.text().await.unwrap_or_default();
+    Err(match status.as_u16() {
+        409 => "The MR has new commits since this review. Re-review before approving.".into(),
+        401 | 403 => format!(
+            "GitLab refused ({status}): you may have approved already, may not be allowed to approve this MR, \
+             or the token lacks the \"api\" scope (read_api can't write). {text}"
+        ),
+        _ => format!("GitLab refused ({status}): {text}"),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_mr_urls() {
+        assert_eq!(
+            parse_mr_url("https://gitlab.example.com/git/sub/billing/-/merge_requests/7"),
+            Some(("git%2Fsub%2Fbilling".into(), 7))
+        );
+        assert_eq!(
+            parse_mr_url("https://gitlab.com/acme/api/-/merge_requests/12/diffs"),
+            Some(("acme%2Fapi".into(), 12))
+        );
+        assert_eq!(parse_mr_url("https://gitlab.com/acme/api/-/issues/3"), None);
+    }
+}

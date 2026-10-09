@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cancel-pr-review"
+description = "Enables the cancel_pr_review command without any pre-configured scope."
+commands.allow = ["cancel_pr_review"]
+
+[[permission]]
+identifier = "deny-cancel-pr-review"
+description = "Denies the cancel_pr_review command without any pre-configured scope."
+commands.deny = ["cancel_pr_review"]

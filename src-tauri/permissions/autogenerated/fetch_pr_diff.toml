@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-pr-diff"
+description = "Enables the fetch_pr_diff command without any pre-configured scope."
+commands.allow = ["fetch_pr_diff"]
+
+[[permission]]
+identifier = "deny-fetch-pr-diff"
+description = "Denies the fetch_pr_diff command without any pre-configured scope."
+commands.deny = ["fetch_pr_diff"]

@@ -1,6 +1,6 @@
 use notify_rust::{Notification, Timeout};
 
-use crate::notifications;
+use crate::{claude_cli, notifications};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -270,76 +270,8 @@ routine automated mail (newsletters, notifications, digests) unless it reports s
 action, such as a failure, an approval request or a deadline. Use the id of the most relevant \
 message for each item.";
 
-const SERVICE: &str = "com.ubumtu.daily-dashboard";
-const CLI_KEY: &str = "claude.cli_path";
-
-/// The Claude Code CLI. Launched from the app menu, PATH may not include ~/.local/bin.
-fn claude_cli() -> std::path::PathBuf {
-    if let Some(configured) = configured_cli() {
-        return configured;
-    }
-    let local = dirs_home().map(|h| h.join(".local/bin/claude"));
-    match local {
-        Some(path) if path.exists() => path,
-        _ => "claude".into(),
-    }
-}
-
-fn configured_cli() -> Option<std::path::PathBuf> {
-    let raw = keyring::Entry::new(SERVICE, CLI_KEY)
-        .ok()?
-        .get_password()
-        .ok()?;
-    let raw = raw.trim();
-    (!raw.is_empty()).then(|| expand_home(raw))
-}
-
-fn expand_home(raw: &str) -> std::path::PathBuf {
-    match raw.strip_prefix("~/") {
-        Some(rest) => dirs_home().map(|h| h.join(rest)).unwrap_or_else(|| raw.into()),
-        None => raw.into(),
-    }
-}
-
-fn dirs_home() -> Option<std::path::PathBuf> {
-    std::env::var_os("HOME").map(Into::into)
-}
-
-#[derive(Serialize)]
-pub struct ClaudeCliCheck {
-    path: String,
-    version: String,
-}
-
-#[tauri::command]
-pub async fn check_claude_cli(path: Option<String>) -> Result<ClaudeCliCheck, String> {
-    let cli = match path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-        Some(p) => expand_home(p),
-        None => claude_cli(),
-    };
-    tauri::async_runtime::spawn_blocking(move || {
-        let out = std::process::Command::new(&cli)
-            .arg("--version")
-            .current_dir(std::env::temp_dir())
-            .output()
-            .map_err(|e| format!("Couldn't run {}: {e}", cli.display()))?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            return Err(format!("{} --version failed: {}", cli.display(), stderr.trim()));
-        }
-        Ok(ClaudeCliCheck {
-            path: cli.display().to_string(),
-            version: String::from_utf8_lossy(&out.stdout).trim().to_string(),
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// Summarizes the unread mail from the last scrape with the Claude Code CLI (`claude -p`), so it
-/// runs on the user's Claude Code login and needs no API key. The CLI gets no tools, MCP servers
-/// or settings, and runs from the temp dir so no CLAUDE.md is picked up: the mail is only text
-/// to summarize.
+/// Summarizes the unread mail from the last scrape with the Claude Code CLI
+/// (`claude_cli::run_structured`: no tools, the mail is only text to summarize).
 #[tauri::command]
 pub async fn brief_outlook_inbox(state: tauri::State<'_, OutlookState>) -> Result<MailBrief, String> {
     let unread: Vec<OutlookMessage> = state
@@ -386,91 +318,16 @@ pub async fn brief_outlook_inbox(state: tauri::State<'_, OutlookState>) -> Resul
     .to_string();
 
     let output = tauri::async_runtime::spawn_blocking(move || {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-        let mut command = Command::new(claude_cli());
-        command
-            .args(["-p", "--output-format", "json", "--model", "sonnet"])
-            .args(["--tools", "", "--strict-mcp-config", "--setting-sources", ""])
-            .arg("--no-session-persistence")
-            .args(["--system-prompt", BRIEF_SYSTEM, "--json-schema", &schema])
-            .current_dir(std::env::temp_dir())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        // Its own process group, so a timeout also stops the real CLI behind a wrapper script
-        // (claude.cli_path can point at one).
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
-        let mut child = command.spawn().map_err(|e| format!("Couldn't start the claude CLI: {e}"))?;
-        let written = child.stdin.take().unwrap().write_all(input.as_bytes());
-        if let Err(e) = written {
-            kill_tree(&mut child);
-            return Err(e.to_string());
-        }
-        wait_with_timeout(child, BRIEF_TIMEOUT)
+        claude_cli::run_structured("sonnet", BRIEF_SYSTEM, &schema, &input, BRIEF_TIMEOUT, |_| {})
     })
     .await
     .map_err(|e| e.to_string())??;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let result: serde_json::Value = serde_json::from_str(&stdout).map_err(|_| {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        format!("claude CLI failed: {}", if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() })
-    })?;
-    if result["is_error"].as_bool() == Some(true) {
-        return Err(format!("claude CLI error: {}", result["result"].as_str().unwrap_or("unknown")));
-    }
-    serde_json::from_value(result["structured_output"].clone())
-        .map_err(|e| format!("Unexpected brief from Claude: {e}"))
+    serde_json::from_value(output).map_err(|e| format!("Unexpected brief from Claude: {e}"))
 }
 
 /// A brief normally takes well under a minute. Without a limit a hung CLI (network stall, expired
 /// login) would stay running, and every later brief would join the stuck one (mailBrief.ts).
 const BRIEF_TIMEOUT: Duration = Duration::from_secs(120);
-
-/// `wait_with_output`, but the process is killed if it runs longer than `timeout`.
-fn wait_with_timeout(mut child: std::process::Child, timeout: Duration) -> Result<std::process::Output, String> {
-    use std::io::Read;
-    // Both pipes are read while waiting, so a full pipe can't stall the CLI.
-    fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            if let Some(mut pipe) = pipe {
-                let _ = pipe.read_to_end(&mut buf);
-            }
-            buf
-        })
-    }
-    let stdout = drain(child.stdout.take());
-    let stderr = drain(child.stderr.take());
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            kill_tree(&mut child);
-            return Err(format!("The claude CLI didn't answer within {}s and was stopped.", timeout.as_secs()));
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    };
-    Ok(std::process::Output {
-        status,
-        stdout: stdout.join().unwrap_or_default(),
-        stderr: stderr.join().unwrap_or_default(),
-    })
-}
-
-/// Kills the child's whole process group (see brief_outlook_inbox) and reaps it.
-fn kill_tree(child: &mut std::process::Child) {
-    #[cfg(unix)]
-    unsafe {
-        libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL);
-    }
-    let _ = child.kill();
-    let _ = child.wait();
-}
 
 fn show(app: &tauri::AppHandle, window: &WebviewWindow) -> Result<(), String> {
     end_warm_up(app, false);
@@ -624,44 +481,5 @@ mod tests {
         assert!(new_unread(&mut seen, &[msg("c", true)]).is_empty());
         // A new message that arrives already read doesn't notify.
         assert!(new_unread(&mut seen, &[msg("d", false)]).is_empty());
-    }
-
-    #[cfg(unix)]
-    fn spawn_grouped(script: &str) -> std::process::Child {
-        use std::os::unix::process::CommandExt;
-        use std::process::{Command, Stdio};
-        Command::new("sh")
-            .args(["-c", script])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .spawn()
-            .unwrap()
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn wait_with_timeout_returns_output() {
-        let out = wait_with_timeout(spawn_grouped("echo hi; echo err >&2"), Duration::from_secs(10)).unwrap();
-        assert!(out.status.success());
-        assert_eq!(out.stdout, b"hi\n");
-        assert_eq!(out.stderr, b"err\n");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn wait_with_timeout_kills_the_whole_group() {
-        // Like a wrapper script: the shell waits on a child that does the work.
-        let child = spawn_grouped("sleep 30; true");
-        let pgid = child.id() as libc::pid_t;
-        let started = Instant::now();
-        assert!(wait_with_timeout(child, Duration::from_millis(500)).is_err());
-        assert!(started.elapsed() < Duration::from_secs(5));
-        // Nothing is left in the group once the orphaned `sleep` (killed too) has been reaped.
-        let gone = (0..50).any(|_| {
-            std::thread::sleep(Duration::from_millis(100));
-            (unsafe { libc::kill(-pgid, 0) }) == -1
-        });
-        assert!(gone, "process group {pgid} still has processes");
     }
 }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-pr-review"
+description = "Enables the get_pr_review command without any pre-configured scope."
+commands.allow = ["get_pr_review"]
+
+[[permission]]
+identifier = "deny-get-pr-review"
+description = "Denies the get_pr_review command without any pre-configured scope."
+commands.deny = ["get_pr_review"]

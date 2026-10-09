@@ -246,3 +246,44 @@ body {
     transform: translateX(400%);
   }
 }
+
+/* Syntax colors for the review page's diff (src/lib/highlight.ts, highlight.js classes). */
+.code .hljs-keyword,
+.code .hljs-selector-tag,
+.code .hljs-built_in {
+  color: #c4b5fd;
+}
+.code .hljs-string,
+.code .hljs-regexp {
+  color: #86efac;
+}
+.code .hljs-symbol,
+.code .hljs-attr,
+.code .hljs-attribute {
+  color: #fcd34d;
+}
+.code .hljs-number,
+.code .hljs-literal {
+  color: #fdba74;
+}
+.code .hljs-title,
+.code .hljs-section,
+.code .hljs-name,
+.code .hljs-selector-class {
+  color: #7dd3fc;
+}
+.code .hljs-variable,
+.code .hljs-template-variable,
+.code .hljs-params {
+  color: #fda4af;
+}
+.code .hljs-comment,
+.code .hljs-quote,
+.code .hljs-meta {
+  color: #64748b;
+  font-style: italic;
+}
+.code .hljs-subst,
+.code .hljs-tag {
+  color: #e2e8f0;
+}

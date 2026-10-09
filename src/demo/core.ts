@@ -2,6 +2,7 @@
 // every command answers with made-up data from ./data, so the UI runs in a plain browser.
 import * as data from "./data";
 import { emit } from "./event";
+import * as review from "./review";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -51,6 +52,15 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     path: (path as string | null) ?? "/home/demo/.local/bin/claude",
     version: "2.1.291 (Claude Code)",
   }),
+
+  fetch_pr_diff: ({ url }) => review.demoDiff(url as string),
+  get_pr_review: ({ url }) => review.getReview(url as string),
+  list_pr_reviews: () => review.listReviews(),
+  review_pr: ({ url }) => review.runReview(url as string),
+  cancel_pr_review: ({ url }) => review.cancel(url as string),
+  post_review_comment: ({ url, finding }) => review.postComment(url as string, finding as number),
+  submit_pr_decision: ({ url, decision, body }) =>
+    review.submitDecision(url as string, decision as "approve", body as string),
 
   get_notification_feed: () => data.notificationFeed,
   dismiss_notification: ({ id }) => {

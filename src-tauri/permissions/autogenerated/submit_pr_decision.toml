@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-submit-pr-decision"
+description = "Enables the submit_pr_decision command without any pre-configured scope."
+commands.allow = ["submit_pr_decision"]
+
+[[permission]]
+identifier = "deny-submit-pr-decision"
+description = "Denies the submit_pr_decision command without any pre-configured scope."
+commands.deny = ["submit_pr_decision"]

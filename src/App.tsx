@@ -6,9 +6,13 @@ import { CommandPalette } from "./components/CommandPalette";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { Starfield } from "./components/Starfield";
 import { TABS, TabId, type TabContext } from "./tabs";
+import { Review } from "./tabs/Review";
+import type { PullRequest } from "./lib/prs";
 
 function App() {
   const [active, setActive] = useState<TabId>("today");
+  // The review page replaces the active tab until you go back or pick a tab.
+  const [reviewPr, setReviewPr] = useState<PullRequest | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -43,7 +47,12 @@ function App() {
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
-  const ctx: TabContext = { navigate: setActive, openSettings, openPalette };
+  const navigate = useCallback((id: TabId) => {
+    setReviewPr(null);
+    setActive(id);
+  }, []);
+
+  const ctx: TabContext = { navigate, openSettings, openPalette, openReview: setReviewPr };
   const activeTab = TABS.find((tab) => tab.id === active) ?? TABS[0];
 
   return (
@@ -51,19 +60,25 @@ function App() {
       <Starfield />
       <TopBar
         active={active}
-        onSelect={setActive}
+        onSelect={navigate}
         onOpenSettings={openSettings}
         onOpenPalette={openPalette}
         settingsOpen={settingsOpen}
       />
       <main className="relative z-10 flex-1 overflow-y-auto">
         {/* key remounts the tab so its entrance animation replays on switch */}
-        <div key={activeTab.id}>{activeTab.render(ctx)}</div>
+        {reviewPr ? (
+          <div key={`review:${reviewPr.url}`}>
+            <Review pr={reviewPr} onBack={() => setReviewPr(null)} />
+          </div>
+        ) : (
+          <div key={activeTab.id}>{activeTab.render(ctx)}</div>
+        )}
       </main>
       <CommandPalette
         open={paletteOpen}
         onClose={closePalette}
-        onNavigate={setActive}
+        onNavigate={navigate}
         onOpenSettings={openSettings}
       />
       <SettingsDrawer open={settingsOpen} onClose={closeSettings} />
