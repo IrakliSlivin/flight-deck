@@ -46,6 +46,7 @@ fn main() {
             "discover_git_repos",
             "scan_git_path",
             "compute_git_stats",
+            "compute_pr_kpi",
         ]),
     ))
     .expect("failed to run tauri-build");

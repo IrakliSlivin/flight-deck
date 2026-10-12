@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Card, SectionHeader } from "../components/Card";
 import { StatTile, type TileState } from "../components/StatTile";
 import { CalendarIcon, PrIcon, PulseIcon, RefreshIcon, TasksIcon } from "../components/Icons";
+import { PrKpiCard } from "../components/PrKpiCard";
 import {
   loadGitStats,
   type DayStat,
@@ -584,6 +585,8 @@ export function Stats({ openSettings }: { openSettings: () => void }) {
           </Card>
         </>
       )}
+
+      <PrKpiCard openSettings={openSettings} delay={420} />
     </div>
   );
 }

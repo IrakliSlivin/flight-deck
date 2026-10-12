@@ -9,6 +9,7 @@ import type { MailBrief, OutlookInbox } from "../lib/outlook";
 import type { ReminderSettings } from "../lib/reminders";
 import type { RateLimitSnapshot } from "../lib/usage";
 import type { DayStat, GitStats, GitStatsSettings, RepoCandidate, Side, SideStat, WeekStat } from "../lib/gitStats";
+import type { MergedPr, PrKpi, ReadyPr } from "../lib/prKpi";
 
 const now = Date.now();
 const MIN = 60_000;
@@ -312,4 +313,66 @@ export function gitStats(): GitStats {
     emails: ["ada@example.com"],
     errors: [],
   };
+}
+
+const KPI_PEOPLE = [
+  { name: "Ada Lovelace", uuid: "{ada}", pace: 0.8, rework: 0.15 },
+  { name: "Grace Hopper", uuid: "{grace}", pace: 1, rework: 0.2 },
+  { name: "Alan Turing", uuid: "{alan}", pace: 1.4, rework: 0.3 },
+  { name: "Margaret Hamilton", uuid: "{margaret}", pace: 0.6, rework: 0.1 },
+  { name: "Ken Thompson", uuid: "{ken}", pace: 1.2, rework: 0.25 },
+];
+const KPI_TITLES = [
+  "Invoice export: CSV columns for Finance",
+  "Retry failed webhooks with backoff",
+  "Rails 8: drop the classic autoloader",
+  "Billing page: skeleton while loading",
+  "Fix proration for mid-month upgrades",
+  "Notify worker: batch SMS sends",
+  "Add an index on invoices.customer_id",
+  "Settle refunds in the nightly job",
+  "Dark mode for the billing settings",
+  "Bump Sidekiq and pin redis-client",
+];
+
+/** A month of made-up PR KPIs, seeded by the month so it's stable. */
+export function prKpi(month: string): PrKpi {
+  let seed = [...month].reduce((s, c) => (s * 31 + c.charCodeAt(0)) % 2147483647, 7) || 1;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const [y, m] = month.split("-").map(Number);
+  const today = new Date();
+  const current = y === today.getFullYear() && m === today.getMonth() + 1;
+  const lastDay = current ? today.getDate() : 28;
+  const repos = ["acme/billing", "acme/billing-web", "acme/notify-worker"];
+  let id = 1400 + ((y * 12 + m) % 50) * 30;
+  const ready: ReadyPr[] = [];
+  const merged: MergedPr[] = [];
+  for (const p of KPI_PEOPLE) {
+    const pr = () => {
+      const repo = repos[Math.floor(rand() * repos.length)];
+      id += 1;
+      return {
+        repo,
+        id,
+        title: KPI_TITLES[Math.floor(rand() * KPI_TITLES.length)],
+        author: p.name,
+        author_uuid: p.uuid,
+        url: `https://bitbucket.org/${repo}/pull-requests/${id}`,
+      };
+    };
+    for (let i = 0, n = 3 + Math.floor(rand() * 7); i < n; i++) {
+      const day = 1 + Math.floor(rand() * lastDay);
+      const waiting = rand() < (current ? 0.25 : 0.05);
+      ready.push({
+        ...pr(),
+        ready_on: new Date(y, m - 1, day, 9 + Math.floor(rand() * 8)).toISOString(),
+        approved_on: waiting ? null : new Date(y, m - 1, Math.min(day + 1, 28), 15).toISOString(),
+        review_seconds: Math.round((1 + rand() * rand() * 24) * p.pace * 3600),
+      });
+    }
+    for (let i = 0, n = 2 + Math.floor(rand() * 6); i < n; i++) {
+      merged.push({ ...pr(), rework: rand() < p.rework });
+    }
+  }
+  return { month, me: "{ada}", repos: repos.length, ready, merged };
 }

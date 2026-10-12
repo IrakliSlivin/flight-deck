@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-compute-pr-kpi"
+description = "Enables the compute_pr_kpi command without any pre-configured scope."
+commands.allow = ["compute_pr_kpi"]
+
+[[permission]]
+identifier = "deny-compute-pr-kpi"
+description = "Denies the compute_pr_kpi command without any pre-configured scope."
+commands.deny = ["compute_pr_kpi"]

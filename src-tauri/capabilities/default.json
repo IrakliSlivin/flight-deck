@@ -57,6 +57,7 @@
     "allow-set-git-stats-settings",
     "allow-discover-git-repos",
     "allow-scan-git-path",
-    "allow-compute-git-stats"
+    "allow-compute-git-stats",
+    "allow-compute-pr-kpi"
   ]
 }

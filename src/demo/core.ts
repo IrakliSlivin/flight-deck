@@ -85,6 +85,16 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   discover_git_repos: () => data.repoCandidates,
   scan_git_path: ({ path }) => [(path as string).replace(/^~/, "/home/ada")],
   compute_git_stats: () => data.gitStats(),
+  compute_pr_kpi: async ({ month }) => {
+    const steps: [string, number][] = [["Listing repositories", 0], ["Reading pull requests", 3], ["Reading PR activity", 40]];
+    for (const [step, total] of steps) {
+      for (let done = 0; done <= total; done += Math.max(1, Math.ceil(total / 8))) {
+        emit("pr-kpi-progress", { month, step, done, total });
+        await delay(120);
+      }
+    }
+    return data.prKpi(month as string);
+  },
   send_claude_message: () => "This is demo mode, so there's no real Claude behind this reply.",
 };
 

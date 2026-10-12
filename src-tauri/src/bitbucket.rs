@@ -16,31 +16,20 @@ const MAX_CONCURRENT_REQUESTS: usize = 16;
 /// activity since would be missed.
 const ACTIVE_REPO_WINDOW_DAYS: i64 = 180;
 
-fn is_recently_active(updated_on: &str) -> bool {
-    match chrono::DateTime::parse_from_rfc3339(updated_on) {
-        Ok(dt) => {
-            let cutoff = chrono::Utc::now() - chrono::Duration::days(ACTIVE_REPO_WINDOW_DAYS);
-            dt.with_timezone(&chrono::Utc) > cutoff
-        }
-        // If we can't parse the timestamp, don't silently drop the repo.
-        Err(_) => true,
-    }
-}
-
 /// Bitbucket's list endpoints omit `draft`/`participants` by default, but
 /// its partial-response `fields` param can pull them in directly — this
 /// avoids a separate detail request per PR entirely (confirmed empirically;
 /// requesting `values.participants` returns the full nested objects).
 const PR_FIELDS: &str = "values.id,values.title,values.draft,values.participants,values.author,values.updated_on,values.links.html,values.source.repository.full_name";
 
-fn new_client() -> reqwest::Client {
+pub(crate) fn new_client() -> reqwest::Client {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .build()
         .unwrap_or_default()
 }
 
-fn get_creds() -> Result<(String, String), String> {
+pub(crate) fn get_creds() -> Result<(String, String), String> {
     let email = Entry::new(SERVICE, "bitbucket.email")
         .map_err(|e| e.to_string())?
         .get_password()
@@ -79,7 +68,7 @@ async fn get_text(client: &reqwest::Client, url: &str, email: &str, token: &str)
     Ok(body)
 }
 
-async fn get_json<T: for<'de> Deserialize<'de>>(
+pub(crate) async fn get_json<T: for<'de> Deserialize<'de>>(
     client: &reqwest::Client,
     url: &str,
     email: &str,
@@ -236,6 +225,22 @@ async fn list_all_repo_slugs(
     token: &str,
     workspace: &str,
 ) -> Result<Vec<String>, String> {
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(ACTIVE_REPO_WINDOW_DAYS);
+    repos_updated_since(client, email, token, workspace, cutoff).await
+}
+
+/// Repo slugs in a workspace last updated after `cutoff` (kept when the date doesn't parse).
+pub(crate) async fn repos_updated_since(
+    client: &reqwest::Client,
+    email: &str,
+    token: &str,
+    workspace: &str,
+    cutoff: chrono::DateTime<chrono::Utc>,
+) -> Result<Vec<String>, String> {
+    let updated_after = |updated_on: &str| match chrono::DateTime::parse_from_rfc3339(updated_on) {
+        Ok(dt) => dt.with_timezone(&chrono::Utc) > cutoff,
+        Err(_) => true,
+    };
     let mut slugs = Vec::new();
     let mut next = Some(format!(
         "https://api.bitbucket.org/2.0/repositories/{workspace}?pagelen=100&fields=values.slug,values.updated_on,next"
@@ -254,7 +259,7 @@ async fn list_all_repo_slugs(
                 .filter(|r| {
                     r.updated_on
                         .as_deref()
-                        .map(is_recently_active)
+                        .map(updated_after)
                         .unwrap_or(true)
                 })
                 .map(|r| r.slug),
@@ -469,21 +474,28 @@ async fn fetch_reviewing_in_repo(
         .collect()
 }
 
+/// Your uuid and the workspaces to read: the configured ones, or every workspace you're in.
+pub(crate) async fn account_workspaces(
+    app: &tauri::AppHandle,
+    client: &reqwest::Client,
+    email: &str,
+    token: &str,
+) -> Result<(String, Vec<String>), String> {
+    let (uuid, cached_workspaces) = get_account_info(app, client, email, token).await?;
+    let workspace_slugs = match get_optional_secret("bitbucket.workspace").filter(|s| !s.trim().is_empty()) {
+        Some(configured) => parse_csv_list(&configured),
+        None => cached_workspaces.unwrap_or_default(),
+    };
+    Ok((uuid, workspace_slugs))
+}
+
 #[tauri::command]
 pub async fn fetch_bitbucket_prs(app: tauri::AppHandle) -> Result<BitbucketPrs, String> {
     let (email, token) = get_creds()?;
     let client = new_client();
 
-    let (uuid, cached_workspaces) = get_account_info(&app, &client, &email, &token).await?;
+    let (uuid, workspace_slugs) = account_workspaces(&app, &client, &email, &token).await?;
     let encoded_uuid = uuid.replace('{', "%7B").replace('}', "%7D");
-
-    let workspace_slugs: Vec<String> = if let Some(configured) =
-        get_optional_secret("bitbucket.workspace").filter(|s| !s.trim().is_empty())
-    {
-        parse_csv_list(&configured)
-    } else {
-        cached_workspaces.unwrap_or_default()
-    };
 
     let authored_lists = join_all(
         workspace_slugs

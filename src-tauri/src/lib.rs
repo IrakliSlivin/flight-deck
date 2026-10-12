@@ -41,6 +41,9 @@ use outlook::{
 mod git_stats;
 use git_stats::{compute_git_stats, discover_git_repos, get_git_stats_settings, scan_git_path, set_git_stats_settings};
 
+mod pr_kpi;
+use pr_kpi::compute_pr_kpi;
+
 mod diff;
 mod review;
 use review::{
@@ -66,6 +69,36 @@ fn migrations() -> Vec<Migration> {
                 label TEXT NOT NULL,
                 url TEXT NOT NULL,
                 sort_order INTEGER NOT NULL DEFAULT 0
+            );
+        ",
+        kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 2,
+        description: "create_pr_kpi",
+        // One row per computed month, and the PRs behind it (src/lib/prKpi.ts):
+        // kind 'ready' fills ready_on/approved_on/review_seconds, 'merged' fills rework.
+        sql: "
+            CREATE TABLE IF NOT EXISTS pr_kpi_months (
+                month TEXT PRIMARY KEY,
+                me TEXT NOT NULL,
+                repos INTEGER NOT NULL,
+                computed_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS pr_kpi_prs (
+                month TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                repo TEXT NOT NULL,
+                pr_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                author TEXT NOT NULL,
+                author_uuid TEXT NOT NULL,
+                url TEXT NOT NULL,
+                ready_on TEXT,
+                approved_on TEXT,
+                review_seconds INTEGER,
+                rework INTEGER,
+                PRIMARY KEY (month, kind, repo, pr_id)
             );
         ",
         kind: MigrationKind::Up,
@@ -199,7 +232,8 @@ pub fn run() {
             set_git_stats_settings,
             discover_git_repos,
             scan_git_path,
-            compute_git_stats
+            compute_git_stats,
+            compute_pr_kpi
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

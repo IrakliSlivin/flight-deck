@@ -34,6 +34,8 @@ rrule = "0.14.0"
 chrono-tz = "0.10.4"
 notify-rust = "4.18.1"
 tauri-plugin-single-instance = "2.5.0"
+# Backoff between Bitbucket retries in pr_kpi.rs; already in the tree via tauri.
+tokio = { version = "1", features = ["time"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
