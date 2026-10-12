@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 const WINDOW_DAYS: i64 = 30;
 
@@ -225,19 +226,19 @@ pub fn compute_claude_usage() -> Result<UsageSummary, String> {
     })
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RateLimitWindow {
     used_percentage: f64,
     resets_at: i64,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct RateLimits {
     five_hour: Option<RateLimitWindow>,
     seven_day: Option<RateLimitWindow>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RateLimitSnapshot {
     #[serde(default)]
     rate_limits: RateLimits,
@@ -249,7 +250,7 @@ fn claude_dir() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".claude"))
 }
 
-// Skip the live fetch while the snapshot is younger than this; the endpoint rate-limits eagerly.
+// Minimum gap between live fetch attempts (successful or not); the endpoint rate-limits eagerly.
 const LIVE_MIN_INTERVAL_SECS: i64 = 1200;
 const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 
@@ -322,38 +323,71 @@ async fn fetch_live_rate_limits(dir: &PathBuf) -> Result<Option<RateLimitSnapsho
     }))
 }
 
-// Prefers a live fetch, falling back to ~/.claude/rate-limits.json. That file is written by
-// ~/.claude/statusline-dashboard.sh from the `rate_limits` field Claude Code passes to its status
-// line, and by this command after each live fetch, so whichever is newest wins.
+// Time of the last live fetch attempt and the last successful result.
+static LIVE: Mutex<(i64, Option<RateLimitSnapshot>)> = Mutex::new((0, None));
+
+// Two readings of the same window have reset times within this of each other.
+const SAME_WINDOW_SECS: i64 = 300;
+
+// Within one window usage only goes up, so the higher reading is the newer one; a later reset
+// time means a newer window.
+fn newer_window(a: Option<RateLimitWindow>, b: Option<RateLimitWindow>) -> Option<RateLimitWindow> {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            if (a.resets_at - b.resets_at).abs() > SAME_WINDOW_SECS {
+                Some(if a.resets_at > b.resets_at { a } else { b })
+            } else {
+                Some(if a.used_percentage >= b.used_percentage { a } else { b })
+            }
+        }
+        (a, b) => a.or(b),
+    }
+}
+
+// Prefers the live endpoint (fetched at most every LIVE_MIN_INTERVAL_SECS), merged with
+// ~/.claude/rate-limits.json, which ~/.claude/statusline-dashboard.sh writes from the
+// `rate_limits` Claude Code passes to its status line. That file can't be trusted on its own:
+// each session reports the numbers from its own last API response, and the status line's
+// refreshInterval rewrites updated_at every 15s even when nothing changed, so an idle session
+// keeps an old reading looking fresh. It only wins where it is provably newer (see newer_window).
 #[tauri::command]
 pub async fn read_claude_rate_limits() -> Result<Option<RateLimitSnapshot>, String> {
     let dir = claude_dir()?;
-    let path = dir.join("rate-limits.json");
     let now = Utc::now().timestamp();
 
-    let mut snapshot: Option<RateLimitSnapshot> = match fs::read_to_string(&path) {
+    let file: Option<RateLimitSnapshot> = match fs::read_to_string(dir.join("rate-limits.json")) {
         Ok(content) => Some(serde_json::from_str(&content).map_err(|e| format!("bad rate-limits.json: {e}"))?),
         Err(_) => None,
     };
 
-    let fresh = snapshot.as_ref().is_some_and(|s| now - s.updated_at < LIVE_MIN_INTERVAL_SECS);
-    if !fresh {
+    let due = {
+        let mut live = LIVE.lock().unwrap();
+        let due = now - live.0 >= LIVE_MIN_INTERVAL_SECS;
+        if due {
+            live.0 = now;
+        }
+        due
+    };
+    if due {
         match fetch_live_rate_limits(&dir).await {
-            Ok(Some(live)) => {
-                if let Ok(json) = serde_json::to_string(&live) {
-                    let tmp = path.with_extension("json.tmp");
-                    if fs::write(&tmp, json).is_ok() {
-                        let _ = fs::rename(&tmp, &path);
-                    }
-                }
-                snapshot = Some(live);
-            }
+            Ok(Some(snapshot)) => LIVE.lock().unwrap().1 = Some(snapshot),
             Ok(None) => {}
             Err(e) => eprintln!("live Claude usage unavailable, using last snapshot: {e}"),
         }
     }
+    let live = LIVE.lock().unwrap().1.clone();
 
-    let Some(mut snapshot) = snapshot else { return Ok(None) };
+    let mut snapshot = match (live, file) {
+        (Some(live), Some(file)) => RateLimitSnapshot {
+            rate_limits: RateLimits {
+                five_hour: newer_window(live.rate_limits.five_hour, file.rate_limits.five_hour),
+                seven_day: newer_window(live.rate_limits.seven_day, file.rate_limits.seven_day),
+            },
+            updated_at: live.updated_at,
+        },
+        (Some(s), None) | (None, Some(s)) => s,
+        (None, None) => return Ok(None),
+    };
     // A window whose reset time has passed has rolled over; the stale percentage no longer applies.
     for window in [&mut snapshot.rate_limits.five_hour, &mut snapshot.rate_limits.seven_day] {
         if let Some(w) = window {
@@ -363,4 +397,34 @@ pub async fn read_claude_rate_limits() -> Result<Option<RateLimitSnapshot>, Stri
         }
     }
     Ok(Some(snapshot))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn w(used: f64, resets_at: i64) -> Option<RateLimitWindow> {
+        Some(RateLimitWindow { used_percentage: used, resets_at })
+    }
+
+    #[test]
+    fn same_window_takes_the_higher_reading() {
+        // Live reports 15:59:59.94 where the status line rounds to 16:00:00.
+        let merged = newer_window(w(56.0, 1_791_820_799), w(36.0, 1_791_820_800)).unwrap();
+        assert_eq!(merged.used_percentage, 56.0);
+        let merged = newer_window(w(30.0, 1_791_820_799), w(36.0, 1_791_820_800)).unwrap();
+        assert_eq!(merged.used_percentage, 36.0);
+    }
+
+    #[test]
+    fn later_window_wins_even_when_lower() {
+        let merged = newer_window(w(90.0, 1_000_000), w(4.0, 1_018_000)).unwrap();
+        assert_eq!(merged.used_percentage, 4.0);
+    }
+
+    #[test]
+    fn missing_side_falls_back_to_the_other() {
+        assert_eq!(newer_window(None, w(12.0, 1)).unwrap().used_percentage, 12.0);
+        assert!(newer_window(None, None).is_none());
+    }
 }
