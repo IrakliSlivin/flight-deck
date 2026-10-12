@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-git-stats-settings"
+description = "Enables the set_git_stats_settings command without any pre-configured scope."
+commands.allow = ["set_git_stats_settings"]
+
+[[permission]]
+identifier = "deny-set-git-stats-settings"
+description = "Denies the set_git_stats_settings command without any pre-configured scope."
+commands.deny = ["set_git_stats_settings"]

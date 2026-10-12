@@ -8,6 +8,7 @@ import type { FeedItem } from "../lib/notifications";
 import type { MailBrief, OutlookInbox } from "../lib/outlook";
 import type { ReminderSettings } from "../lib/reminders";
 import type { RateLimitSnapshot } from "../lib/usage";
+import type { DayStat, GitStats, GitStatsSettings, RepoCandidate, Side, SideStat, WeekStat } from "../lib/gitStats";
 
 const now = Date.now();
 const MIN = 60_000;
@@ -202,3 +203,113 @@ export const todos = [
   { text: "Review Grace's Rails 8 PR before 4:30", done: 0 },
   { text: "Book a room for Thursday's retro", done: 1 },
 ];
+
+export const gitStatsSettings: GitStatsSettings = {
+  repos: ["/home/ada/work/billing", "/home/ada/work/billing-web", "/home/ada/work/notify-worker"],
+  manual: [],
+  emails: [],
+};
+
+export const repoCandidates: RepoCandidate[] = [
+  { path: "/home/ada/work/billing", name: "billing", remote: "bitbucket.org/acme/billing", email: "ada@example.com", sources: ["claude", "jetbrains"], last_used: sec(-HOUR) },
+  { path: "/home/ada/work/billing-web", name: "billing-web", remote: "bitbucket.org/acme/billing-web", email: "ada@example.com", sources: ["claude"], last_used: sec(-26 * HOUR) },
+  { path: "/home/ada/work/notify-worker", name: "notify-worker", remote: "gitlab.com/acme/notify-worker", email: "ada@example.com", sources: ["jetbrains"], last_used: sec(-80 * HOUR) },
+  { path: "/home/ada/work/infra", name: "infra", remote: "gitlab.com/acme/infra", email: "ada@example.com", sources: ["jetbrains"], last_used: sec(-400 * HOUR) },
+  { path: "/home/ada/side/flight-deck", name: "flight-deck", remote: "github.com/ada/flight-deck", email: "ada@users.noreply.github.com", sources: ["claude"], last_used: sec(-30 * HOUR) },
+];
+
+/** 12 weeks of plausible commits: weekday-heavy, a quiet week, busier lately. Seeded, so it's stable. */
+export function gitStats(): GitStats {
+  let seed = 42;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const key = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7) - 77);
+  const repos = gitStatsSettings.repos.map((path) => ({
+    path,
+    name: path.split("/").pop()!,
+    commits: 0,
+    added: 0,
+    removed: 0,
+    backend: 0,
+    frontend: 0,
+    other: 0,
+    last_commit: null as number | null,
+  }));
+  const weights = [0.6, 0.3, 0.1];
+  // What each repo's commits touch: [side, language, share].
+  const mix: [Side, string, number][][] = [
+    [["backend", "Ruby", 0.62], ["frontend", "Views", 0.14], ["frontend", "JavaScript", 0.06], ["other", "Config", 0.08], ["other", "Docs", 0.1]],
+    [["frontend", "TypeScript", 0.74], ["frontend", "CSS", 0.14], ["other", "Config", 0.07], ["other", "Docs", 0.05]],
+    [["backend", "TypeScript", 0.82], ["other", "Config", 0.12], ["other", "Shell", 0.06]],
+  ];
+  const sides: Record<Side, SideStat> = {
+    backend: { side: "backend", commits: 0, added: 0, removed: 0, languages: [] },
+    frontend: { side: "frontend", commits: 0, added: 0, removed: 0, languages: [] },
+    other: { side: "other", commits: 0, added: 0, removed: 0, languages: [] },
+  };
+  const weeks: WeekStat[] = Array.from({ length: 12 }, (_, w) => ({
+    start: key(new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7)),
+    backend: 0,
+    frontend: 0,
+    other: 0,
+  }));
+  const days: DayStat[] = [];
+  const hours = Array(24).fill(0);
+  for (let d = new Date(start); d <= today; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    const week = Math.floor((d.getTime() - start.getTime()) / (7 * 24 * HOUR));
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    const base = week === 5 ? 0.4 : weekend ? 0.6 : 2.5 + week * 0.25;
+    const commits = Math.max(0, Math.round(base * (rand() * 2) - (weekend ? 0.4 : 0)));
+    if (!commits) continue;
+    const day: DayStat = { date: key(d), commits, added: 0, removed: 0 };
+    for (let i = 0; i < commits; i++) {
+      const added = Math.round(10 + rand() * rand() * 400);
+      const removed = Math.round(added * rand() * 0.6);
+      day.added += added;
+      day.removed += removed;
+      const r = rand();
+      const ri = r < weights[0] ? 0 : r < weights[0] + weights[1] ? 1 : 2;
+      const repo = repos[ri];
+      repo.commits += 1;
+      repo.added += added;
+      repo.removed += removed;
+      const touched = new Set<Side>();
+      for (const [side, lang, share] of mix[ri]) {
+        // Not every commit touches every part.
+        if (share < 0.5 && rand() > share * 3) continue;
+        const a = Math.round(added * share);
+        const rm = Math.round(removed * share);
+        touched.add(side);
+        repo[side] += a + rm;
+        weeks[week][side] += a + rm;
+        sides[side].added += a;
+        sides[side].removed += rm;
+        let l = sides[side].languages.find((x) => x.name === lang);
+        if (!l) sides[side].languages.push((l = { name: lang, added: 0, removed: 0 }));
+        l.added += a;
+        l.removed += rm;
+      }
+      touched.forEach((side) => (sides[side].commits += 1));
+      const hour = weekend ? 20 + Math.floor(rand() * 3) : Math.min(23, Math.round(9 + rand() * 6 + rand() * 4));
+      hours[hour] += 1;
+      repo.last_commit = Math.round(d.getTime() / 1000) + hour * 3600;
+    }
+    days.push(day);
+  }
+  return {
+    start: key(start),
+    end: key(today),
+    days,
+    hours,
+    sides: Object.values(sides).map((x) => ({
+      ...x,
+      languages: x.languages.sort((a, b) => b.added + b.removed - (a.added + a.removed)),
+    })),
+    weeks,
+    repos: [...repos.sort((a, b) => b.added + b.removed - (a.added + a.removed))],
+    emails: ["ada@example.com"],
+    errors: [],
+  };
+}

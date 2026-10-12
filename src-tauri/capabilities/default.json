@@ -52,6 +52,11 @@
     "allow-clear-notifications",
     "allow-dismiss-notification",
     "allow-get-notification-feed",
-    "allow-preview-notification-sound"
+    "allow-preview-notification-sound",
+    "allow-get-git-stats-settings",
+    "allow-set-git-stats-settings",
+    "allow-discover-git-repos",
+    "allow-scan-git-path",
+    "allow-compute-git-stats"
   ]
 }

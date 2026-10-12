@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { clearNotifications } from "../lib/notifications";
-import { TABS, TabId } from "../tabs";
+import { TabId, useTabs } from "../tabs";
 
 interface PaletteItem {
   id: string;
@@ -23,10 +23,11 @@ export function CommandPalette({
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const tabs = useTabs();
 
   const items = useMemo<PaletteItem[]>(
     () => [
-      ...TABS.map((tab) => ({
+      ...tabs.map((tab) => ({
         id: tab.id,
         label: `Go to ${tab.label}`,
         hint: "tab",
@@ -36,7 +37,7 @@ export function CommandPalette({
       { id: "clear-notifications", label: "Clear notifications", hint: "", run: () => void clearNotifications() },
       { id: "quit", label: "Quit Flight Deck", hint: "ctrl q", run: () => invoke("quit_app") },
     ],
-    [onNavigate, onOpenSettings],
+    [tabs, onNavigate, onOpenSettings],
   );
 
   const filtered = items.filter((item) =>

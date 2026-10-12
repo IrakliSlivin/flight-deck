@@ -13,6 +13,7 @@ import { CLAUDE_CLI_KEY, checkClaudeCli, type ClaudeCliCheck } from "../lib/outl
 import { CredentialField } from "./CredentialField";
 import { CloseIcon } from "./Icons";
 import { IntegrationSetup } from "./IntegrationSetup";
+import { RepositoriesSection } from "./RepositoriesSection";
 
 interface FieldDef {
   key: string;
@@ -367,7 +368,7 @@ export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () =
         <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
           <div>
             <h2 className="label text-slate-300">Settings</h2>
-            <p className="mt-1 text-xs text-slate-400">Notifications, integrations &amp; credentials</p>
+            <p className="mt-1 text-xs text-slate-400">Notifications, integrations, credentials &amp; Stats repos</p>
           </div>
           <button
             onClick={onClose}
@@ -449,6 +450,7 @@ export function SettingsDrawer({ open, onClose }: { open: boolean; onClose: () =
             Saved to your OS keyring (Secret Service) — never written to plaintext config, and never
             leaves this machine.
           </p>
+          <RepositoriesSection />
         </div>
       </aside>
     </div>

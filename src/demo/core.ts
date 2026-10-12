@@ -79,6 +79,12 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   set_reminder_settings: ({ settings }) => void Object.assign(data.reminderSettings, settings),
   preview_notification_sound: () => undefined,
   quit_app: () => undefined,
+
+  get_git_stats_settings: () => data.gitStatsSettings,
+  set_git_stats_settings: ({ settings }) => void Object.assign(data.gitStatsSettings, settings),
+  discover_git_repos: () => data.repoCandidates,
+  scan_git_path: ({ path }) => [(path as string).replace(/^~/, "/home/ada")],
+  compute_git_stats: () => data.gitStats(),
   send_claude_message: () => "This is demo mode, so there's no real Claude behind this reply.",
 };
 

@@ -38,6 +38,9 @@ use outlook::{
     brief_outlook_inbox, get_outlook_inbox, open_outlook, refresh_outlook, report_outlook_inbox, OutlookState,
 };
 
+mod git_stats;
+use git_stats::{compute_git_stats, discover_git_repos, get_git_stats_settings, scan_git_path, set_git_stats_settings};
+
 mod diff;
 mod review;
 use review::{
@@ -191,7 +194,12 @@ pub fn run() {
             clear_notifications,
             dismiss_notification,
             get_notification_feed,
-            preview_notification_sound
+            preview_notification_sound,
+            get_git_stats_settings,
+            set_git_stats_settings,
+            discover_git_repos,
+            scan_git_path,
+            compute_git_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

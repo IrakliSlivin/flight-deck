@@ -213,22 +213,34 @@ fn schema() -> String {
     .to_string()
 }
 
-/// Why a file stays out of the prompt: nothing to review in it, or too big to be worth it.
-fn skip_reason(file: &DiffFile) -> Option<&'static str> {
+/// Lock files and generated or vendored code: nothing a person wrote. Also keeps them out of the
+/// line counts on the Stats tab (git_stats.rs).
+pub fn generated_kind(path: &str) -> Option<&'static str> {
     const LOCK_FILES: [&str; 10] = [
         "Gemfile.lock", "yarn.lock", "package-lock.json", "pnpm-lock.yaml", "bun.lock",
         "Podfile.lock", "Cargo.lock", "poetry.lock", "composer.lock", "go.sum",
     ];
     const GENERATED_DIRS: [&str; 4] = ["vendor/", "node_modules/", "public/packs", "public/assets/"];
-    let name = file.path.rsplit('/').next().unwrap_or(&file.path);
-    if file.binary {
-        Some("binary or too large to diff")
-    } else if LOCK_FILES.contains(&name) {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if LOCK_FILES.contains(&name) {
         Some("lock file")
     } else if name.ends_with(".min.js") || name.ends_with(".min.css") || name.ends_with(".map")
-        || GENERATED_DIRS.iter().any(|d| file.path.starts_with(d))
+        || GENERATED_DIRS.iter().any(|d| path.starts_with(d))
+        // Build output and installed packages, at any depth (e.g. `app/assets/x/dist/bundle.js`).
+        || path.split('/').rev().skip(1).any(|dir| dir == "dist" || dir == "node_modules")
     {
         Some("generated or vendored")
+    } else {
+        None
+    }
+}
+
+/// Why a file stays out of the prompt: nothing to review in it, or too big to be worth it.
+fn skip_reason(file: &DiffFile) -> Option<&'static str> {
+    if file.binary {
+        Some("binary or too large to diff")
+    } else if let Some(kind) = generated_kind(&file.path) {
+        Some(kind)
     } else if file.hunks.iter().map(|h| h.lines.len()).sum::<usize>() > MAX_FILE_LINES {
         Some("diff too large")
     } else {

@@ -52,7 +52,7 @@ export function StatTile({
             ) : shown === null ? (
               "—"
             ) : (
-              Math.round(shown)
+              Math.round(shown).toLocaleString()
             )}
           </span>
           <Icon

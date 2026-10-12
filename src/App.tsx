@@ -5,7 +5,7 @@ import { TopBar } from "./components/TopBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { Starfield } from "./components/Starfield";
-import { TABS, TabId, type TabContext } from "./tabs";
+import { TabId, useTabs, type TabContext } from "./tabs";
 import { Review } from "./tabs/Review";
 import type { PullRequest } from "./lib/prs";
 
@@ -53,13 +53,18 @@ function App() {
   }, []);
 
   const ctx: TabContext = { navigate, openSettings, openPalette, openReview: setReviewPr };
-  const activeTab = TABS.find((tab) => tab.id === active) ?? TABS[0];
+  // Falls back to Overview when the active tab goes away (Stats, after unticking every repo).
+  const tabs = useTabs();
+  const activeTab = tabs.find((tab) => tab.id === active) ?? tabs[0];
+  useEffect(() => {
+    if (activeTab.id !== active) setActive(activeTab.id);
+  }, [activeTab.id, active]);
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden text-slate-100">
       <Starfield />
       <TopBar
-        active={active}
+        active={activeTab.id}
         onSelect={navigate}
         onOpenSettings={openSettings}
         onOpenPalette={openPalette}

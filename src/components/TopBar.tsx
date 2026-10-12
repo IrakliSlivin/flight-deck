@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { TABS, TabId } from "../tabs";
+import { TabId, useTabs } from "../tabs";
 import { hasCredential } from "../lib/credentials";
 import { useIdle } from "../lib/idle";
 import { REQUIRED_KEY } from "./SettingsDrawer";
@@ -71,6 +71,7 @@ export function TopBar({
   settingsOpen: boolean;
 }) {
   const [linked, total] = useLinkedCount(settingsOpen);
+  const tabs = useTabs();
   const allLinked = linked === total;
 
   return (
@@ -94,7 +95,7 @@ export function TopBar({
       </div>
 
       <nav className="flex shrink-0 items-center gap-1 rounded-xl border border-white/[0.07] bg-white/[0.03] p-1">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onSelect(tab.id)}

@@ -41,6 +41,11 @@ fn main() {
             "dismiss_notification",
             "get_notification_feed",
             "preview_notification_sound",
+            "get_git_stats_settings",
+            "set_git_stats_settings",
+            "discover_git_repos",
+            "scan_git_path",
+            "compute_git_stats",
         ]),
     ))
     .expect("failed to run tauri-build");

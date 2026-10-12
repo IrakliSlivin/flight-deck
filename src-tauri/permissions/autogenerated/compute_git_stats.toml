@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-compute-git-stats"
+description = "Enables the compute_git_stats command without any pre-configured scope."
+commands.allow = ["compute_git_stats"]
+
+[[permission]]
+identifier = "deny-compute-git-stats"
+description = "Denies the compute_git_stats command without any pre-configured scope."
+commands.deny = ["compute_git_stats"]

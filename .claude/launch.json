@@ -13,7 +13,10 @@
     {
       "name": "demo",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "demo"],
+      "runtimeArgs": [
+        "run",
+        "demo"
+      ],
       "port": 1430
     },
     {
@@ -27,6 +30,15 @@
         "--strictPort"
       ],
       "port": 1421
+    },
+    {
+      "name": "app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:app"
+      ],
+      "port": 1420
     }
   ]
 }
