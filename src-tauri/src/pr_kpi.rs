@@ -22,12 +22,13 @@ const WORK_END: u32 = 18;
 const REQUIRED_APPROVALS: usize = 2;
 /// Kept below the PRs tab's 16: a month means a few hundred requests in one go.
 const MAX_CONCURRENT_REQUESTS: usize = 8;
-/// Repos with no push this long before the month starts can't have a PR in it.
-const REPO_IDLE_DAYS: i64 = 90;
 const MAX_PAGES: usize = 20;
+/// The Ruby reads one page of activity this long to find when a PR left draft.
+const ACTIVITY_PAGELEN: usize = 50;
+/// The Ruby leaves out PRs opened from this branch.
+const SKIPPED_SOURCE_BRANCH: &str = "master";
 /// Only what the KPIs read; `next` has to be asked for once `fields` is set.
-const LIST_FIELDS: &str =
-    "next,values.id,values.title,values.created_on,values.author,values.participants,values.links.html";
+const LIST_FIELDS: &str = "next,values.id,values.title,values.created_on,values.author,values.participants,values.links.html,values.source.branch.name";
 
 #[derive(Deserialize)]
 struct Page<T> {
@@ -45,6 +46,8 @@ struct RawPr {
     #[serde(default)]
     participants: Vec<RawParticipant>,
     links: RawLinks,
+    #[serde(default)]
+    source: Value,
 }
 #[derive(Deserialize, Default)]
 struct RawUser {
@@ -79,7 +82,7 @@ pub struct ReadyPr {
     pub author_uuid: String,
     pub url: String,
     pub ready_on: String,
-    /// The second approval; None when it hasn't come, and the review time runs until now.
+    /// The second approval (by time); None when it hasn't come, and the review time runs until now.
     pub approved_on: Option<String>,
     /// Business seconds (Mon–Fri 9–18 Tbilisi, Georgian holidays off).
     pub review_seconds: i64,
@@ -196,10 +199,12 @@ fn iso(t: DateTime<Utc>) -> String {
     t.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-/// When the PR left draft: a PR whose first activity is a draft update became ready at its
+/// When the PR left draft: a PR whose oldest activity is a draft update became ready at its
 /// first later non-draft OPEN update; any other PR was ready when it was created.
-/// `activity` is newest first, as Bitbucket returns it.
+/// `activity` is newest first, as Bitbucket returns it. Like the Ruby, only the first page
+/// (50 entries) is looked at, so on a longer PR "oldest" means the 50th newest.
 fn ready_for_review_on(activity: &[Value], created_on: &str) -> Option<DateTime<Utc>> {
+    let activity = &activity[..activity.len().min(ACTIVITY_PAGELEN)];
     let created_as_draft = activity.last().map(|a| a["update"]["draft"] == true).unwrap_or(false);
     if !created_as_draft {
         return parse_time(created_on);
@@ -212,7 +217,8 @@ fn ready_for_review_on(activity: &[Value], created_on: &str) -> Option<DateTime<
         .and_then(|u| parse_time(u["date"].as_str()?))
 }
 
-/// The last approval once there are at least two, by the approvers' `participated_on`.
+/// The second approval once there are at least two, by the approvers' `participated_on`
+/// (the Ruby's `approvals[1]`).
 fn approved_on(participants: &[RawParticipant]) -> Option<DateTime<Utc>> {
     let mut approvals: Vec<DateTime<Utc>> = participants
         .iter()
@@ -220,7 +226,7 @@ fn approved_on(participants: &[RawParticipant]) -> Option<DateTime<Utc>> {
         .filter_map(|p| parse_time(p.participated_on.as_deref()?))
         .collect();
     approvals.sort();
-    (approvals.len() >= REQUIRED_APPROVALS).then(|| *approvals.last().unwrap())
+    approvals.get(REQUIRED_APPROVALS - 1).copied()
 }
 
 /// Bitbucket's get_json, retried with backoff on rate limits, 5xx and network errors.
@@ -290,15 +296,14 @@ pub async fn compute_pr_kpi(app: tauri::AppHandle, month: String) -> Result<PrKp
     }
     let mut repos = Vec::new();
     for workspace in &workspaces {
-        let slugs =
-            bitbucket::repos_updated_since(&client, &email, &token, workspace, from - Duration::days(REPO_IDLE_DAYS))
-                .await?;
+        // Every repo, as the Ruby does: an old repo can still have a PR that left draft this month.
+        let slugs = bitbucket::repos_updated_since(&client, &email, &token, workspace, DateTime::<Utc>::MIN_UTC).await?;
         repos.extend(slugs.into_iter().map(|slug| format!("{workspace}/{slug}")));
     }
 
-    // The two services' queries, with the month's end exclusive.
+    // The two services' queries.
     let (f, t) = (iso(from), iso(to));
-    let ready_q = format!(r#"updated_on >= "{f}" AND created_on < "{t}" AND draft = false AND state != "DECLINED""#);
+    let ready_q = format!(r#"updated_on >= "{f}" AND created_on <= "{t}" AND draft = false AND state != "DECLINED""#);
     let merged_q = format!(r#"updated_on >= "{f}" AND updated_on < "{t}" AND draft = false AND state = "MERGED""#);
 
     let done = AtomicUsize::new(0);
@@ -335,7 +340,7 @@ pub async fn compute_pr_kpi(app: tauri::AppHandle, month: String) -> Result<PrKp
             let progress = &progress;
             let total = wanted.len();
             async move {
-                let url = format!("https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests/{id}/activity?pagelen=50");
+                let url = format!("https://api.bitbucket.org/2.0/repositories/{repo}/pullrequests/{id}/activity?pagelen={ACTIVITY_PAGELEN}");
                 let activity = get_all(client, url, email, token).await?;
                 progress("Reading PR activity", done.fetch_add(1, Ordering::Relaxed) + 1, total);
                 Ok(((repo, id), activity))
@@ -351,6 +356,9 @@ pub async fn compute_pr_kpi(app: tauri::AppHandle, month: String) -> Result<PrKp
     let mut merged_prs = Vec::new();
     for (repo, ready, merged) in lists {
         for pr in ready {
+            if pr.source["branch"]["name"] == SKIPPED_SOURCE_BRANCH {
+                continue;
+            }
             let activity = activities.get(&(repo.clone(), pr.id)).map(Vec::as_slice).unwrap_or_default();
             let Some(ready_on) = ready_for_review_on(activity, &pr.created_on) else {
                 continue;
@@ -457,6 +465,11 @@ mod tests {
         ];
         assert_eq!(ready_for_review_on(&activity, "2026-09-01T08:00:00Z"), Some(utc("2026-09-03T08:00:00Z")));
 
+        // Only the first page counts: the draft update past it is never seen.
+        let mut activity = vec![json!({ "comment": {} }); ACTIVITY_PAGELEN];
+        activity.push(json!({ "update": { "draft": true, "state": "OPEN", "date": "2026-09-01T08:00:00Z" } }));
+        assert_eq!(ready_for_review_on(&activity, "2026-09-01T08:00:00Z"), Some(utc("2026-09-01T08:00:00Z")));
+
         // Still a draft.
         let activity = vec![json!({ "update": { "draft": true, "state": "OPEN", "date": "2026-09-01T08:00:00Z" } })];
         assert_eq!(ready_for_review_on(&activity, "2026-09-01T08:00:00Z"), None);
@@ -468,6 +481,15 @@ mod tests {
         assert_eq!(approved_on(&[p(true, "2026-09-02T08:00:00Z"), p(false, "2026-09-04T08:00:00Z")]), None);
         assert_eq!(
             approved_on(&[p(true, "2026-09-03T08:00:00Z"), p(true, "2026-09-02T08:00:00Z")]),
+            Some(utc("2026-09-03T08:00:00Z"))
+        );
+        // A third approval doesn't move it.
+        assert_eq!(
+            approved_on(&[
+                p(true, "2026-09-05T08:00:00Z"),
+                p(true, "2026-09-03T08:00:00Z"),
+                p(true, "2026-09-02T08:00:00Z")
+            ]),
             Some(utc("2026-09-03T08:00:00Z"))
         );
     }
