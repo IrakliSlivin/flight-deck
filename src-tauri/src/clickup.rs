@@ -8,6 +8,7 @@ use tauri::Manager;
 const SERVICE: &str = "com.ubumtu.daily-dashboard";
 const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
 const STATUS_CACHE_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+const MAX_TASK_PAGES: u32 = 20;
 
 fn get_token() -> Result<String, String> {
     let entry = Entry::new(SERVICE, "clickup.api_token").map_err(|e| e.to_string())?;
@@ -196,6 +197,27 @@ struct SpaceObj {
 #[derive(Deserialize)]
 struct TasksResponse {
     tasks: Vec<RawTask>,
+    #[serde(default)]
+    last_page: Option<bool>,
+}
+
+/// ClickUp returns at most 100 tasks per page; reads pages until the last one.
+async fn get_all_tasks(
+    client: &reqwest::Client,
+    url: &str,
+    token: &str,
+) -> Result<Vec<RawTask>, String> {
+    let mut all = Vec::new();
+    for page in 0..MAX_TASK_PAGES {
+        let parsed: TasksResponse =
+            get_json(client, &format!("{url}&page={page}"), token).await?;
+        let done = parsed.last_page.unwrap_or(parsed.tasks.len() < 100);
+        all.extend(parsed.tasks);
+        if done {
+            break;
+        }
+    }
+    Ok(all)
 }
 #[derive(Deserialize)]
 struct RawTask {
@@ -337,57 +359,72 @@ pub async fn fetch_clickup_tasks(app: tauri::AppHandle) -> Result<Vec<ClickupTas
     let use_name_fallback = container_filter.is_none() && candidate_ids.is_empty();
 
     let mut matched_any_space_by_name = false;
-    let mut all = Vec::new();
+    let mut raw_tasks = Vec::new();
 
-    for team_id in &team_ids {
-        let mut url = format!(
-            "https://api.clickup.com/api/v2/team/{team_id}/task?assignees[]={user_id}&include_closed=false&order_by=due_date"
+    // Subtasks are left out unless asked for. A picked List uses the List
+    // endpoint, the only one that also returns tasks added to it from another
+    // List (`include_timl`); the team filter matches home Lists only.
+    let common =
+        format!("assignees[]={user_id}&include_closed=false&subtasks=true&order_by=due_date");
+
+    if let Some(ContainerFilter::List(list_id)) = &container_filter {
+        let url = format!(
+            "https://api.clickup.com/api/v2/list/{list_id}/task?{common}&include_timl=true"
         );
+        raw_tasks = get_all_tasks(&client, &url, &token).await?;
+    } else {
+        for team_id in &team_ids {
+            let mut url = format!("https://api.clickup.com/api/v2/team/{team_id}/task?{common}");
 
-        if let Some(cf) = &container_filter {
-            let (param, id) = cf.query_param();
-            url.push_str(&format!("&{param}={id}"));
-        } else if use_name_fallback {
-            if let Some(name) = &raw_filter {
-                let spaces_url = format!(
-                    "https://api.clickup.com/api/v2/team/{team_id}/space?archived=false"
-                );
-                let spaces: SpacesResponse = match get_json(&client, &spaces_url, &token).await {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let matching_ids: Vec<String> = spaces
-                    .spaces
-                    .into_iter()
-                    .filter(|s| s.name.eq_ignore_ascii_case(name))
-                    .map(|s| s.id)
-                    .collect();
-                if matching_ids.is_empty() {
-                    continue;
-                }
-                matched_any_space_by_name = true;
-                for id in &matching_ids {
-                    url.push_str(&format!("&space_ids[]={id}"));
+            if let Some(cf) = &container_filter {
+                let (param, id) = cf.query_param();
+                url.push_str(&format!("&{param}={id}"));
+            } else if use_name_fallback {
+                if let Some(name) = &raw_filter {
+                    let spaces_url = format!(
+                        "https://api.clickup.com/api/v2/team/{team_id}/space?archived=false"
+                    );
+                    let spaces: SpacesResponse =
+                        match get_json(&client, &spaces_url, &token).await {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                    let matching_ids: Vec<String> = spaces
+                        .spaces
+                        .into_iter()
+                        .filter(|s| s.name.eq_ignore_ascii_case(name))
+                        .map(|s| s.id)
+                        .collect();
+                    if matching_ids.is_empty() {
+                        continue;
+                    }
+                    matched_any_space_by_name = true;
+                    for id in &matching_ids {
+                        url.push_str(&format!("&space_ids[]={id}"));
+                    }
                 }
             }
-        }
 
-        let parsed: TasksResponse = match get_json(&client, &url, &token).await {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        for t in parsed.tasks {
-            all.push(ClickupTask {
-                id: t.id,
-                name: t.name,
-                status: t.status.status,
-                due_date: t.due_date,
-                url: t.url,
-                list_id: t.list.id,
-                list_name: t.list.name,
-            });
+            if let Ok(tasks) = get_all_tasks(&client, &url, &token).await {
+                raw_tasks.extend(tasks);
+            }
         }
     }
+
+    let mut seen = std::collections::HashSet::new();
+    let all: Vec<ClickupTask> = raw_tasks
+        .into_iter()
+        .filter(|t| seen.insert(t.id.clone()))
+        .map(|t| ClickupTask {
+            id: t.id,
+            name: t.name,
+            status: t.status.status,
+            due_date: t.due_date,
+            url: t.url,
+            list_id: t.list.id,
+            list_name: t.list.name,
+        })
+        .collect();
 
     if use_name_fallback {
         if let Some(name) = raw_filter {
