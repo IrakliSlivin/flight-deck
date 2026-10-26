@@ -31,6 +31,7 @@ mod reminders;
 use reminders::{get_reminder_settings, set_reminder_settings};
 
 mod claude_cli;
+mod host;
 use claude_cli::check_claude_cli;
 
 mod outlook;

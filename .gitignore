@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Flatpak build inputs and output
+flatpak/*.deb
+flatpak/build-dir
+flatpak/repo
+flatpak/.flatpak-builder
+*.flatpak

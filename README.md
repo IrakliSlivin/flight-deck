@@ -53,7 +53,7 @@ Download a prebuilt package from the
 [latest release](https://github.com/IrakliSlivin/flight-deck/releases/latest).
 There's nothing to compile.
 
-### Ubuntu / Debian
+### Ubuntu 22.04+ / Debian 12+
 
 ```bash
 wget https://github.com/IrakliSlivin/flight-deck/releases/latest/download/flight-deck_amd64.deb
@@ -69,6 +69,59 @@ menu. To update, run the same two commands again. To uninstall:
 ```bash
 sudo apt remove flight-deck
 ```
+
+### Ubuntu 20.04 and other older distros (Flatpak)
+
+The `.deb` and AppImage need Ubuntu 22.04 or newer: Ubuntu 20.04 has no
+WebKitGTK 4.1 and an older glibc. The Flatpak brings its own libraries (the
+GNOME runtime from Flathub), so it runs there too.
+
+One-time setup on Ubuntu 20.04. The `flatpak` in 20.04's own repositories
+(1.6) can no longer read Flathub, so take it from the Flatpak team's PPA:
+
+```bash
+sudo add-apt-repository ppa:alexlarsson/flatpak
+```
+
+```bash
+sudo apt update && sudo apt install flatpak
+```
+
+```bash
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+```
+
+Log out and back in once, so the app menu picks up Flatpak apps. Then install
+Flight Deck (the first install also downloads the GNOME runtime, about 1 GB):
+
+```bash
+wget https://github.com/IrakliSlivin/flight-deck/releases/latest/download/flight-deck_x86_64.flatpak
+```
+
+```bash
+flatpak install --user -y ./flight-deck_x86_64.flatpak
+```
+
+Open **Flight Deck** from the app menu, or run
+`flatpak run io.github.IrakliSlivin.FlightDeck`. To update, download and
+install again. To uninstall:
+
+```bash
+flatpak uninstall --user io.github.IrakliSlivin.FlightDeck
+```
+
+Things to know about the Flatpak:
+
+- It reads your home folder (read only) for Claude usage (`~/.claude`) and the
+  Stats tab's repositories. `git` and the `claude` CLI run outside the
+  sandbox, through `flatpak-spawn --host`, so they must be installed on the
+  system itself. That permission (`org.freedesktop.Flatpak`) means the
+  sandbox doesn't really isolate the app.
+- Its data (database, settings) lives in
+  `~/.var/app/io.github.IrakliSlivin.FlightDeck/`, separate from a `.deb`
+  install. Tokens are in the system keyring, so they're shared.
+- Building it yourself: [flatpak/](flatpak/) has the manifest. It repackages
+  the release `.deb`.
 
 ### Other distros (AppImage)
 

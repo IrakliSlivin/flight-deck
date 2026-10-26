@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tauri::{AppHandle, Manager};
 
 use crate::review::generated_kind;
@@ -75,7 +74,7 @@ fn expand_home(raw: &str) -> PathBuf {
 }
 
 fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
+    let out = crate::host::command("git")
         .arg("-C")
         .arg(repo)
         .args(args)

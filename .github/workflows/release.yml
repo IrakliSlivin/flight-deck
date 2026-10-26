@@ -1,4 +1,5 @@
-# Builds the Linux .deb and .AppImage and the macOS .dmg (universal, ad-hoc signed, not notarized).
+# Builds the Linux .deb and .AppImage, a Flatpak bundle (for Ubuntu 20.04 and other distros too old
+# for the .deb), and the macOS .dmg (universal, ad-hoc signed, not notarized).
 # - Pushing a tag like v0.1.0 publishes a GitHub Release with all three files, under fixed names
 #   so https://github.com/IrakliSlivin/flight-deck/releases/latest/download/<name> always
 #   points at the newest one. The tag must match "version" in src-tauri/tauri.conf.json.
@@ -66,6 +67,36 @@ jobs:
           name: flight-deck-linux
           path: dist-release/
 
+  # Repackages the .deb from the linux job on the GNOME runtime (flatpak/ has the manifest).
+  flatpak:
+    needs: linux
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: flight-deck-linux
+          path: dist-linux
+
+      - run: cp dist-linux/flight-deck_amd64.deb flatpak/
+
+      # Bundles with --runtime-repo=flathub, so installing it fetches the runtime.
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: flatpak/io.github.IrakliSlivin.FlightDeck.yml
+          bundle: flight-deck_x86_64.flatpak
+          upload-artifact: false
+          cache: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flight-deck-flatpak
+          path: flight-deck_x86_64.flatpak
+
   macos:
     runs-on: macos-latest
     steps:
@@ -103,7 +134,7 @@ jobs:
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [linux, macos]
+    needs: [linux, flatpak, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

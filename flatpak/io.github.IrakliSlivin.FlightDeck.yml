@@ -1,0 +1,46 @@
+# Flatpak build of Flight Deck, for distros whose own packages are too old for Tauri 2
+# (Ubuntu 20.04 has no webkit2gtk-4.1 and an older glibc). It repackages the .deb from the release
+# workflow on the GNOME runtime, which brings WebKitGTK 4.1, libsoup 3 and a current glibc.
+# Build (as the release workflow does): copy the .deb next to this file as flight-deck_amd64.deb, then
+#   flatpak-builder --user --install-deps-from=flathub --repo=repo build-dir io.github.IrakliSlivin.FlightDeck.yml
+#   flatpak build-bundle repo flight-deck_x86_64.flatpak io.github.IrakliSlivin.FlightDeck \
+#     --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+id: io.github.IrakliSlivin.FlightDeck
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: flight-deck
+finish-args:
+  - --share=ipc
+  - --share=network
+  # X11 only: main.rs forces GDK_BACKEND=x11 (the Outlook warm-up and the global shortcut need it).
+  - --socket=x11
+  - --device=dri
+  # ~/.claude (usage, rate limits, Stats repo discovery), JetBrains' recent projects, your repos.
+  - --filesystem=home:ro
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+  # The OS keyring (Secret Service) for API tokens.
+  - --talk-name=org.freedesktop.secrets
+  # git and the claude CLI run on the host via flatpak-spawn --host (src-tauri/src/host.rs).
+  - --talk-name=org.freedesktop.Flatpak
+  # tauri-plugin-single-instance's D-Bus name is derived from the Tauri identifier.
+  - --own-name=com.ubumtu.daily-dashboard.*
+modules:
+  - name: flight-deck
+    buildsystem: simple
+    sources:
+      - type: file
+        path: flight-deck_amd64.deb
+      - type: file
+        path: io.github.IrakliSlivin.FlightDeck.metainfo.xml
+    build-commands:
+      - ar -x flight-deck_amd64.deb
+      - tar -xf data.tar.*
+      - install -Dm755 usr/bin/flight-deck /app/bin/flight-deck
+      - install -Dm644 usr/share/applications/*.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/flight-deck.png /app/share/icons/hicolor/32x32/apps/${FLATPAK_ID}.png
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/flight-deck.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/flight-deck.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml

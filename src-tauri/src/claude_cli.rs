@@ -52,7 +52,7 @@ pub async fn check_claude_cli(path: Option<String>) -> Result<ClaudeCliCheck, St
         None => claude_cli(),
     };
     tauri::async_runtime::spawn_blocking(move || {
-        let out = std::process::Command::new(&cli)
+        let out = crate::host::command(&cli)
             .arg("--version")
             .current_dir(std::env::temp_dir())
             .output()
@@ -83,8 +83,8 @@ pub fn run_structured(
     on_start: impl FnOnce(u32),
 ) -> Result<serde_json::Value, String> {
     use std::io::Write;
-    use std::process::{Command, Stdio};
-    let mut command = Command::new(claude_cli());
+    use std::process::Stdio;
+    let mut command = crate::host::stoppable_command(claude_cli(), timeout);
     command
         .args(["-p", "--output-format", "json", "--model", model])
         .args(["--tools", "", "--strict-mcp-config", "--setting-sources", ""])
