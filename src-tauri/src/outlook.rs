@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_opener::OpenerExt;
 
 // No Graph API (disabled by the org): Outlook Web runs in its own window with the user's normal
 // login, and outlook_scrape.js reads the inbox off the page. The `outlook` capability lets that
@@ -96,6 +97,17 @@ fn outlook_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String
         .inner_size(1200.0, 820.0)
         .visible(false)
         .initialization_script(SCRAPER)
+        .on_new_window({
+            // Links in mail open in a new tab, which the webview would drop: send them to the
+            // default browser instead.
+            let app = app.clone();
+            move |url, _| {
+                if matches!(url.scheme(), "http" | "https" | "mailto") {
+                    let _ = app.opener().open_url(url.as_str(), None::<&str>);
+                }
+                tauri::webview::NewWindowResponse::Deny
+            }
+        })
         .build()
         .map_err(|e| e.to_string())?;
     *app.state::<OutlookState>().created.lock().unwrap() = Some(Instant::now());
